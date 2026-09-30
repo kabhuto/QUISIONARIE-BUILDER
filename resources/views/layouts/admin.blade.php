@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>@yield('title') | Ruang Kuesioner</title>
+    <link rel="stylesheet" href="{{ asset('css/builder.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="{{ route('surveys.index') }}" aria-label="Dashboard Ruang Kuesioner">
+            <span class="brand-mark">b<span>p</span>s</span>
+            <span class="brand-name">RUANG<span>KUESIONER</span></span>
+        </a>
+        <nav class="topbar-context" aria-label="Navigasi utama">
+            <a href="{{ route('surveys.index') }}" @class(['nav-link', 'is-active' => request()->routeIs('surveys.index')])>DASHBOARD</a>
+        </nav>
+        <div class="topbar-actions">
+            @yield('actions')
+        </div>
+    </header>
+
+    @if (session('status'))
+        <div class="toast" role="status">{{ session('status') }}</div>
+    @endif
+
+    <main class="app-shell">
+        @yield('content')
+    </main>
+
+    <script>
+        document.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', async () => {
+            const field = document.querySelector(button.dataset.copy);
+            try {
+                await navigator.clipboard.writeText(field.value);
+            } catch {
+                field.select();
+                document.execCommand('copy');
+            }
+            const label = button.textContent;
+            button.textContent = 'Tersalin';
+            setTimeout(() => (button.textContent = label), 1500);
+        }));
+    </script>
+</body>
+</html>
