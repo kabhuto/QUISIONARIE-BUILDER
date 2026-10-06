@@ -50,17 +50,27 @@
         return text !== '' && !Number.isNaN(Number(text)) ? Number(text) : null;
     }
 
+    // Answer tags in a rule value ({{id}} or {{id|fallback}}) become the respondent's answers.
+    function resolveTags(value, known) {
+        return String(value ?? '').replace(/\{\{([A-Za-z0-9_-]+)(?:\|([^}]*))?\}\}/g, (match, id, fallback) => {
+            const answer = known[id];
+            const text = Array.isArray(answer) ? answer.join(', ') : String(answer ?? '').trim();
+            return text !== '' ? text : fallback ?? '';
+        });
+    }
+
     // Same rules as App\Support\SurveyLogic::passes(): case-insensitive; a hidden question counts as unanswered.
     function passes(condition, known) {
         if (!condition) return true;
         const answer = known[condition.question_id] ?? '';
-        const value = String(condition.value ?? '').trim().toLowerCase();
+        const resolved = resolveTags(condition.value, known);
+        const value = resolved.trim().toLowerCase();
         const values = (Array.isArray(answer) ? answer : [answer]).map(item => String(item ?? '').trim().toLowerCase());
         const text = Array.isArray(answer) ? '' : String(answer).trim().toLowerCase();
         const equals = Array.isArray(answer) ? values.includes(value) : text === value;
         const contains = Array.isArray(answer) ? values.includes(value) : value !== '' && text.includes(value);
         const number = toNumber(answer);
-        const target = toNumber(condition.value);
+        const target = toNumber(resolved);
 
         switch (condition.operator) {
             case 'answered': return isAnswered(answer);

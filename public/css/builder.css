@@ -342,3 +342,20 @@ body{background:#fff}.topbar,.page-intro,.toolbox,.settings-panel,.editor-toolba
 .check-preview i{width:12px;height:12px;border:1px solid #6d8c85;background:#fff}
 .range-settings{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 @media print{.matrix-editor{display:none}}
+.value-wrap{flex:1;min-width:0;display:flex}
+.value-wrap>.setting-select{flex:1;min-width:0;border-radius:2px 0 0 2px}
+.mention-button{flex:none;width:24px;height:26px;border:1px solid #dce7e3;border-left:0;border-radius:0 2px 2px 0;background:#f6faf8;color:#2b7a6f;font-weight:700;font-size:11px;cursor:pointer;padding:0}
+.mention-button:hover,.mention-button[aria-expanded="true"]{background:#e6f2ee;border-color:#81b5a8}
+.mention-chip{flex:1;min-width:0;display:flex;align-items:center;gap:5px;min-height:26px;padding:2px 4px 2px 7px;border:1px solid #b9d9cf;border-radius:13px;background:#eef7f3;color:#1f6f63;font-size:9px}
+.mention-chip>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mention-chip small{color:#6b8d85}
+.mention-chip button{border:0;background:none;color:#5d8a80;font-size:13px;line-height:1;cursor:pointer;padding:0 3px}
+.mention-chip.is-invalid{border-color:#efb7ac;background:#fbe4e0;color:#a33a2c}
+.mention-picker{display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid #cfe1db;border-radius:4px;background:#fff;box-shadow:0 4px 12px #183a3b14}
+.mention-picker-head{display:flex;gap:6px;align-items:center;font-size:10px;color:#294d48}
+.mention-picker-head strong{white-space:nowrap}
+.mention-list{display:flex;flex-direction:column;gap:2px;max-height:150px;overflow:auto}
+.mention-list button{display:flex;gap:6px;align-items:center;border:0;border-radius:3px;background:none;padding:5px 6px;text-align:left;font-size:10px;color:#48635e;cursor:pointer}
+.mention-list button:hover,.mention-list button:focus-visible{background:#eef6f3;outline:none}
+.mention-list b{display:grid;place-items:center;width:16px;height:16px;border-radius:3px;background:#e0ecff;color:#2456a6;font-size:9px}
+.mention-picker .mini-button{align-self:flex-end}

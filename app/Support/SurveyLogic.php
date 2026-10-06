@@ -27,6 +27,11 @@ class SurveyLogic
     public const MAX_RULES = 20;
 
     /**
+     * An answer tag inside a rule value: {{question-id}} or {{question-id|fallback}}.
+     */
+    public const MENTION = '/\{\{([A-Za-z0-9_-]+)(?:\|([^}]*))?\}\}/';
+
+    /**
      * Fills in the field settings a question may lack, and turns the old single "show when"
      * condition into the equivalent "hidden + show when …" logic.
      *
@@ -199,6 +204,39 @@ class SurveyLogic
     }
 
     /**
+     * Ids of the questions whose answers a rule value refers to.
+     *
+     * @return list<string>
+     */
+    public static function mentions(string $value): array
+    {
+        preg_match_all(self::MENTION, $value, $matches);
+
+        return $matches[1];
+    }
+
+    /**
+     * Replaces answer tags in a rule value with the respondent's answers, or the tag's fallback when unanswered.
+     *
+     * @param  array<string, mixed>  $answers
+     */
+    public static function resolve(string $value, array $answers): string
+    {
+        if (! str_contains($value, '{{')) {
+            return $value;
+        }
+
+        return (string) preg_replace_callback(self::MENTION, function (array $match) use ($answers): string {
+            $answer = $answers[$match[1]] ?? null;
+            $text = is_array($answer)
+                ? implode(', ', array_map('strval', array_filter($answer, 'is_scalar')))
+                : trim((string) $answer);
+
+            return $text !== '' ? $text : ($match[2] ?? '');
+        }, $value);
+    }
+
+    /**
      * @param  array<string, mixed>|null  $condition
      * @param  array<string, mixed>  $answers
      */
@@ -209,7 +247,8 @@ class SurveyLogic
         }
 
         $answer = $answers[$condition['question_id']] ?? null;
-        $value = mb_strtolower(trim((string) ($condition['value'] ?? '')));
+        $resolved = self::resolve((string) ($condition['value'] ?? ''), $answers);
+        $value = mb_strtolower(trim($resolved));
         $isAnswered = is_array($answer) ? $answer !== [] : trim((string) $answer) !== '';
         $values = array_map(fn ($item): string => mb_strtolower(trim((string) $item)), is_array($answer) ? $answer : [$answer]);
         $text = is_array($answer) ? '' : mb_strtolower(trim((string) $answer));
@@ -217,7 +256,7 @@ class SurveyLogic
         $equals = is_array($answer) ? in_array($value, $values, true) : $text === $value;
         $contains = is_array($answer) ? in_array($value, $values, true) : ($value !== '' && str_contains($text, $value));
         $number = self::number($answer);
-        $target = self::number($condition['value'] ?? null);
+        $target = self::number($resolved);
 
         return match ($condition['operator']) {
             'answered' => $isAnswered,
@@ -260,7 +299,11 @@ class SurveyLogic
             }
 
             $operator = Survey::CONDITION_OPERATORS[$rule['operator']] ?? $rule['operator'];
-            $value = in_array($rule['operator'], self::VALUELESS_OPERATORS, true) ? '' : ' '.$rule['value'];
+            $value = in_array($rule['operator'], self::VALUELESS_OPERATORS, true) ? '' : ' '.preg_replace_callback(
+                self::MENTION,
+                fn (array $match): string => 'jawaban '.($numbers[$match[1]] ?? $match[1]),
+                (string) $rule['value'],
+            );
 
             return ($numbers[$rule['question_id']] ?? $rule['question_id']).' '.$operator.$value;
         }, $group['rules']);

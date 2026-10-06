@@ -28,6 +28,7 @@
     let dragState = null;
     let numbers = new Map();
     let fieldTab = 'options';
+    let mentionAt = null;
 
     // ── Model ──────────────────────────────────────────────────────────────
 
@@ -131,6 +132,18 @@
             operator: config.operators[rule?.operator] ? rule.operator : 'equals',
             value: String(rule?.value ?? ''),
         };
+    }
+
+    // An answer tag in a rule value, {{question-id}} or {{question-id|fallback}}: compare with another answer.
+    const MENTION = /\{\{([A-Za-z0-9_-]+)(?:\|([^}]*))?\}\}/g;
+
+    function mentionsIn(value) {
+        return [...String(value ?? '').matchAll(MENTION)].map(match => ({ id: match[1], fallback: match[2] ?? '' }));
+    }
+
+    function wholeMention(value) {
+        const match = /^\{\{([A-Za-z0-9_-]+)(?:\|([^}]*))?\}\}$/.exec(String(value ?? '').trim());
+        return match ? { id: match[1], fallback: match[2] ?? '' } : null;
     }
 
     // A group is {operator: "and" | "or", rules: [...]}; rules are conditions or (one level of) nested groups.
@@ -331,7 +344,9 @@
             }
             if (!available.some(item => item.question.id === rule.question_id)) return 'merujuk pertanyaan yang tidak ada sebelumnya';
             if (!valueless.includes(rule.operator) && !rule.value.trim()) return 'belum memiliki nilai jawaban';
-            if (['greater_than', 'less_than'].includes(rule.operator) && Number.isNaN(Number(rule.value.replace(',', '.')))) return 'harus memakai angka untuk pembanding lebih/kurang dari';
+            const mentions = valueless.includes(rule.operator) ? [] : mentionsIn(rule.value);
+            if (mentions.some(mention => !available.some(item => item.question.id === mention.id))) return 'memakai tag jawaban dari pertanyaan yang tidak tersedia';
+            if (!mentions.length && ['greater_than', 'less_than'].includes(rule.operator) && Number.isNaN(Number(rule.value.replace(',', '.')))) return 'harus memakai angka untuk pembanding lebih/kurang dari';
         }
         return '';
     }
@@ -376,7 +391,8 @@
         return group.rules.map(rule => {
             if (rule.rules) return `(${describeGroup(rule, available)})`;
             const source = available.find(item => item.question.id === rule.question_id);
-            const value = valueless.includes(rule.operator) ? '' : ` ${rule.value}`;
+            const tagged = rule.value.replace(MENTION, (match, id) => `@${available.find(item => item.question.id === id)?.number ?? '?'}`);
+            const value = valueless.includes(rule.operator) ? '' : ` ${tagged}`;
             return `${source?.number ?? '?'} ${config.operators[rule.operator]}${value}`;
         }).join(group.operator === 'or' ? ' atau ' : ' dan ');
     }
@@ -438,7 +454,11 @@
 
     function pruneGroup(group, removed) {
         group.rules = group.rules
-            .map(rule => (rule.rules ? pruneGroup(rule, removed) : rule))
+            .map(rule => {
+                if (rule.rules) return pruneGroup(rule, removed);
+                if (mentionsIn(rule.value).some(mention => removed.has(mention.id))) rule.value = '';
+                return rule;
+            })
             .filter(rule => (rule.rules ? rule.rules.length > 0 : !removed.has(rule.question_id)));
         return group;
     }
@@ -519,8 +539,33 @@
         return { question_id: source?.id ?? '', operator: 'equals', value: source && choiceTypes.includes(source.type) ? source.options[0] ?? '' : '' };
     }
 
-    function ruleValueControl(rule, source) {
+    function ruleValueControl(rule, source, available, isOpen) {
         if (valueless.includes(rule.operator)) return '';
+        const mention = wholeMention(rule.value);
+        if (mention) {
+            const reference = available.find(item => item.question.id === mention.id);
+            return `<span class="mention-chip ${reference ? '' : 'is-invalid'}" title="Dibandingkan dengan jawaban pertanyaan ini">
+                <b>@</b><span>${escapeHtml(reference ? questionLabel(reference) : 'pertanyaan tidak tersedia')}${mention.fallback ? ` <small>· jika kosong: ${escapeHtml(mention.fallback)}</small>` : ''}</span>
+                <button type="button" data-mention-action="clear" aria-label="Hapus tag jawaban">×</button>
+            </span>`;
+        }
+        return `<span class="value-wrap">${ruleValueInput(rule, source)}<button class="mention-button" type="button" data-mention-action="open" aria-expanded="${isOpen}" title="Bandingkan dengan jawaban pertanyaan lain" aria-label="Sisipkan tag jawaban">@</button></span>`;
+    }
+
+    function mentionPicker(rule, available) {
+        const candidates = available.filter(item => item.question.id !== rule.question_id);
+        return `
+            <div class="mention-picker">
+                <div class="mention-picker-head"><strong>Sisipkan tag jawaban</strong><input class="setting-select" type="text" maxlength="100" placeholder="Nilai jika kosong" data-mention-fallback aria-label="Nilai cadangan jika pertanyaan belum dijawab"></div>
+                <p class="setting-note">${candidates.length ? 'Pilih pertanyaan. Nilai pembanding diambil dari jawaban responden.' : 'Belum ada pertanyaan lain yang bisa dijadikan tag.'}</p>
+                <div class="mention-list">
+                    ${candidates.map(item => `<button type="button" data-mention-action="insert" data-mention-id="${escapeHtml(item.question.id)}"><b>@</b>${escapeHtml(questionLabel(item))}</button>`).join('')}
+                </div>
+                <button class="mini-button" type="button" data-mention-action="cancel">Batal</button>
+            </div>`;
+    }
+
+    function ruleValueInput(rule, source) {
         const options = source && choiceTypes.includes(source.question.type) ? source.question.options : [];
         if (options.length && !['greater_than', 'less_than'].includes(rule.operator)) {
             return `<select class="setting-select" data-rule-field="value" aria-label="Nilai">
@@ -534,6 +579,7 @@
 
     function ruleEditor(rule, available, scope, path) {
         const source = available.find(item => item.question.id === rule.question_id);
+        const isOpen = mentionAt === `${scope}|${path.join('.')}` && !valueless.includes(rule.operator) && !wholeMention(rule.value);
         return `
             <div class="rule-row ${source ? '' : 'is-invalid'}" data-scope="${scope}" data-path="${path.join('.')}">
                 <select class="setting-select" data-rule-field="question_id" aria-label="Pertanyaan">
@@ -544,9 +590,10 @@
                     <select class="setting-select" data-rule-field="operator" aria-label="Pembanding">
                         ${Object.entries(config.operators).map(([operator, label]) => `<option value="${operator}" ${operator === rule.operator ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
                     </select>
-                    ${ruleValueControl(rule, source)}
+                    ${ruleValueControl(rule, source, available, isOpen)}
                     <button class="question-remove" type="button" data-group-action="remove-rule" aria-label="Hapus aturan">×</button>
                 </div>
+                ${isOpen ? mentionPicker(rule, available) : ''}
             </div>`;
     }
 
@@ -1025,6 +1072,7 @@
         showPane('item');
         if (isSelected(kind, id)) return;
         selected = { kind, id };
+        mentionAt = null;
         blockList.querySelectorAll('.is-selected').forEach(element => element.classList.remove('is-selected'));
         const attribute = kind === 'block' ? 'data-block-id' : 'data-question-id';
         blockList.querySelector(`[${attribute}="${CSS.escape(id)}"]`)?.classList.add('is-selected');
@@ -1466,6 +1514,7 @@
         const tab = event.target.closest('[data-field-tab]')?.dataset.fieldTab;
         if (tab) {
             fieldTab = tab;
+            mentionAt = null;
             return renderSelectionPanel();
         }
 
@@ -1488,8 +1537,26 @@
             return afterPanelChange(question, { rerender: true });
         }
 
+        const mentionAction = event.target.closest('[data-mention-action]');
+        if (mentionAction) {
+            const row = mentionAction.closest('.rule-row');
+            const key = `${row.dataset.scope}|${row.dataset.path}`;
+            const rule = nodeAt(scopeRoot(question, row.dataset.scope), parsePath(row.dataset.path));
+            const action = mentionAction.dataset.mentionAction;
+            if (action === 'open') mentionAt = mentionAt === key ? null : key;
+            if (action === 'cancel') mentionAt = null;
+            if (action === 'clear') rule.value = '';
+            if (action === 'insert') {
+                const fallback = row.querySelector('[data-mention-fallback]').value.replace(/[{}|]/g, '').trim();
+                rule.value = `{{${mentionAction.dataset.mentionId}${fallback ? `|${fallback}` : ''}}}`;
+                mentionAt = null;
+            }
+            return afterPanelChange(question, { rerender: true });
+        }
+
         const groupAction = event.target.closest('[data-group-action]');
         if (groupAction) {
+            mentionAt = null;
             const node = groupAction.closest('[data-path]');
             const scope = node.dataset.scope;
             const root = scopeRoot(question, scope);

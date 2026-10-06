@@ -207,4 +207,37 @@ class FieldSettingsTest extends TestCase
 
         $this->assertContains('peringatan jika 101 sama dengan Laki-laki dan 102 sama dengan Ya: Apakah benar responden laki-laki sedang hamil?', $rules['rules']);
     }
+
+    public function test_a_rule_value_can_be_a_tag_for_another_answer(): void
+    {
+        $check = fn (string $value): array => ['rules' => [], 'message' => '', 'checks' => [[
+            'id' => 'k-umur', 'level' => 'error', 'message' => 'Umur anak melebihi umur ibu.',
+            'conditions' => ['operator' => 'and', 'rules' => [['question_id' => 'q-anak', 'operator' => 'greater_than', 'value' => $value]]],
+        ]]];
+        $survey = $this->makeSurvey([
+            $this->question('q-ibu', 'number', 'Umur ibu'),
+            $this->question('q-anak', 'number', 'Umur anak', ['validation' => $check('{{q-ibu|150}}')]),
+        ]);
+
+        $this->post(route('form.store', $survey), ['answers' => ['q-ibu' => '30', 'q-anak' => '35']])
+            ->assertSessionHasErrors(['answers.q-anak' => 'Umur anak melebihi umur ibu.']);
+        $this->post(route('form.store', $survey), ['answers' => ['q-ibu' => '30', 'q-anak' => '5']])
+            ->assertRedirect(route('form.thanks', $survey));
+        // Without the mother's age the fallback (150) is compared instead.
+        $this->post(route('form.store', $survey), ['answers' => ['q-anak' => '35']])
+            ->assertRedirect(route('form.thanks', $survey));
+
+        $this->assertContains('galat jika 102 lebih dari jawaban 101: Umur anak melebihi umur ibu.', SurveyJson::export($survey)['validation_rules'][1]['rules']);
+
+        // The builder refuses a tag that points at a question that does not exist.
+        $blocks = [['id' => 'b-1', 'title' => 'ART', 'layout' => 'full', 'condition' => null, 'questions' => [
+            $this->question('q-ibu', 'number', 'Umur ibu'),
+            $this->question('q-anak', 'number', 'Umur anak', ['validation' => $check('{{q-hilang}}')]),
+        ]]];
+        $this->post(route('surveys.store'), [
+            'title' => 'Survei', 'form_code' => 'S-1', 'activity' => 'Pendataan',
+            'settings' => ['paper_size' => 'A4', 'orientation' => 'portrait', 'period_type' => 'none', 'numbering' => 'block', 'theme' => 'blue', 'confidential' => '0'],
+            'header' => json_encode(['items' => []]), 'blocks' => json_encode($blocks),
+        ])->assertSessionHasErrors('blocks.0.questions.1.validation');
+    }
 }

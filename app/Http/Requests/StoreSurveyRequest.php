@@ -354,7 +354,12 @@ class StoreSurveyRequest extends FormRequest
             if (! in_array($operator, SurveyLogic::VALUELESS_OPERATORS, true) && $value === '') {
                 return 'belum memiliki nilai jawaban';
             }
-            if (in_array($operator, ['greater_than', 'less_than'], true) && ! is_numeric(str_replace(',', '.', $value))) {
+            $mentions = SurveyLogic::mentions($value);
+
+            if (array_diff($mentions, array_keys($earlierQuestions)) !== []) {
+                return 'memakai tag jawaban dari pertanyaan yang tidak tersedia';
+            }
+            if ($mentions === [] && in_array($operator, ['greater_than', 'less_than'], true) && ! is_numeric(str_replace(',', '.', $value))) {
                 return 'harus memakai angka untuk pembanding lebih/kurang dari';
             }
             if (mb_strlen($value) > 255) {
