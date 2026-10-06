@@ -175,7 +175,10 @@ class SurveyBuilderTest extends TestCase
         $this->assertFalse($info['required']);
         $this->assertSame(0, $info['code_length']);
         $this->assertSame([], $code['options']);
-        $this->assertSame('', $code['condition']['value']);
+        // A legacy "show when" condition becomes a hidden field with logic that shows it.
+        $this->assertTrue($code['hidden']);
+        $this->assertSame(['show'], $code['logic']['actions']);
+        $this->assertSame('', $code['logic']['conditions']['rules'][0]['value']);
         $this->assertSame(['Dibayar', 'Tidak dibayar'], $table['table']['rows']);
         $this->assertSame(3, $table['table']['initial_rows']);
         $this->assertSame([], $table['table']['columns'][0]['options']);
@@ -267,7 +270,7 @@ class SurveyBuilderTest extends TestCase
         $blocks = $this->validBlocks();
         $blocks[0]['questions'][1]['condition'] = ['question_id' => 'q-wil', 'operator' => 'answered', 'value' => ''];
         $this->post(route('surveys.store'), $this->validPayload(blocks: $blocks))
-            ->assertSessionHasErrors('blocks.0.questions.1.condition');
+            ->assertSessionHasErrors('blocks.0.questions.1.logic');
     }
 
     public function test_logic_needs_a_value_unless_it_checks_for_any_answer(): void

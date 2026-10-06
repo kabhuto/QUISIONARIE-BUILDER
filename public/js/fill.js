@@ -10,19 +10,23 @@
     const progressBar = document.querySelector('[data-progress-bar]');
     const progressText = document.querySelector('[data-progress-text]');
 
-    function conditionOf(element) {
+    function parseJson(value) {
         try {
-            return JSON.parse(element.dataset.condition || 'null');
+            return JSON.parse(value || 'null');
         } catch {
             return null;
         }
+    }
+
+    function conditionOf(element) {
+        return parseJson(element.dataset.condition);
     }
 
     function fieldValue(field) {
         return (field?.value ?? '').trim();
     }
 
-    // The answer as the display logic sees it; structured answers only count as "answered or not".
+    // The answer as the logic sees it; structured answers only count as "answered or not".
     function answerOf(question) {
         const type = question.dataset.type;
         if (type === 'multiple') return [...question.querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value);
@@ -31,54 +35,218 @@
             const filled = [...question.querySelectorAll('input:not([type="radio"]):not([type="hidden"]), select, input[type="radio"]:checked')].some(field => fieldValue(field) !== '');
             return filled ? ['filled'] : [];
         }
-        return fieldValue(question.querySelector('[name^="answers["]'));
+        const value = fieldValue(question.querySelector('[name^="answers["]'));
+        return type === 'currency' ? value.replace(/\D/g, '') : value;
     }
 
     function isAnswered(answer) {
         return Array.isArray(answer) ? answer.length > 0 : answer !== '';
     }
 
-    // Same rules as App\Support\SurveyLogic: a hidden question counts as unanswered.
-    function passes(condition, visibleAnswers) {
-        if (!condition) return true;
-        const answer = visibleAnswers[condition.question_id] ?? '';
-        const value = String(condition.value ?? '');
-        const equals = Array.isArray(answer) ? answer.includes(value) : answer === value;
-        if (condition.operator === 'answered') return isAnswered(answer);
-        if (condition.operator === 'not_equals') return !equals;
-        return equals;
+    function toNumber(value) {
+        if (Array.isArray(value) || value === null || value === undefined) return null;
+        const text = String(value).trim().replace(',', '.');
+        return text !== '' && !Number.isNaN(Number(text)) ? Number(text) : null;
     }
 
-    function visibleQuestions() {
-        return [...form.querySelectorAll('.fill-question:not([data-type="info"])')].filter(question => !question.hidden && !question.closest('.fill-block').hidden);
+    // Same rules as App\Support\SurveyLogic::passes(): case-insensitive; a hidden question counts as unanswered.
+    function passes(condition, known) {
+        if (!condition) return true;
+        const answer = known[condition.question_id] ?? '';
+        const value = String(condition.value ?? '').trim().toLowerCase();
+        const values = (Array.isArray(answer) ? answer : [answer]).map(item => String(item ?? '').trim().toLowerCase());
+        const text = Array.isArray(answer) ? '' : String(answer).trim().toLowerCase();
+        const equals = Array.isArray(answer) ? values.includes(value) : text === value;
+        const contains = Array.isArray(answer) ? values.includes(value) : value !== '' && text.includes(value);
+        const number = toNumber(answer);
+        const target = toNumber(condition.value);
+
+        switch (condition.operator) {
+            case 'answered': return isAnswered(answer);
+            case 'empty': return !isAnswered(answer);
+            case 'not_equals': return !equals;
+            case 'contains': return contains;
+            case 'not_contains': return !contains;
+            case 'greater_than': return number !== null && target !== null && number > target;
+            case 'less_than': return number !== null && target !== null && number < target;
+            default: return equals;
+        }
+    }
+
+    // A group is {operator: "and" | "or", rules: [...]} where each rule is a condition or a nested group.
+    function evaluate(group, known) {
+        const rules = group?.rules ?? [];
+        if (!rules.length) return false;
+        const results = rules.map(rule => (rule.rules ? evaluate(rule, known) : passes(rule, known)));
+        return group.operator === 'or' ? results.includes(true) : !results.includes(false);
+    }
+
+    const ACTIONS = {
+        hide: ['hidden', true], show: ['hidden', false],
+        disable: ['disabled', true], enable: ['disabled', false],
+        require: ['required', true], optional: ['required', false],
+    };
+
+    // Mirrors SurveyLogic::states(): base flags, then the field logic's actions when its rules hold.
+    function stateOf(question, blockVisible, known) {
+        const state = {
+            hidden: !blockVisible || question.hasAttribute('data-static-hidden'),
+            disabled: question.hasAttribute('data-static-disabled'),
+            required: question.hasAttribute('data-static-required'),
+        };
+        const logic = parseJson(question.dataset.logic);
+        if (blockVisible && logic && evaluate(logic.conditions, known)) {
+            (logic.actions ?? []).forEach(action => {
+                const [key, value] = ACTIONS[action] ?? [];
+                if (key) state[key] = value;
+            });
+        }
+        if (question.dataset.type === 'info' || state.hidden || state.disabled) state.required = false;
+        return state;
+    }
+
+    // Questions the respondent can see and change.
+    function editableQuestions() {
+        return [...form.querySelectorAll('.fill-question:not([data-type="info"])')]
+            .filter(question => !question.hidden && !question.closest('.fill-block').hidden && !question.classList.contains('is-disabled'));
     }
 
     function applyLogic() {
-        const visibleAnswers = {};
+        const known = {};
         blocks.forEach(block => {
-            const blockVisible = passes(conditionOf(block), visibleAnswers);
+            const blockVisible = passes(conditionOf(block), known);
             block.hidden = !blockVisible;
             document.querySelector(`[data-nav-block="${CSS.escape(block.dataset.blockId)}"]`)?.toggleAttribute('hidden', !blockVisible);
             block.querySelectorAll('.fill-question').forEach(question => {
-                const visible = blockVisible && passes(conditionOf(question), visibleAnswers);
-                question.hidden = !visible;
-                question.querySelectorAll('input, select, textarea, button').forEach(field => (field.disabled = !visible));
-                if (visible && question.dataset.type !== 'info') visibleAnswers[question.dataset.questionId] = answerOf(question);
+                const state = stateOf(question, blockVisible, known);
+                question.hidden = state.hidden;
+                question.classList.toggle('is-disabled', state.disabled);
+                question.toggleAttribute('data-required', state.required);
+                question.querySelectorAll('input, select, textarea, button').forEach(field => (field.disabled = state.hidden || state.disabled));
+                if (!state.hidden && question.dataset.type !== 'info') known[question.dataset.questionId] = answerOf(question);
             });
         });
         form.querySelectorAll('.cawi-table[data-mode="dynamic"]').forEach(table => {
-            if (!table.closest('.fill-question').hidden) updateAddButton(table);
+            const question = table.closest('.fill-question');
+            if (!question.hidden && !question.classList.contains('is-disabled')) updateAddButton(table);
         });
+        updateChecks(known);
+        updateCounters();
         updateProgress();
+    }
+
+    // Consistency checks appear as soon as their conditions hold (e.g. "Laki-laki" and "hamil").
+    function updateChecks(known) {
+        form.querySelectorAll('.fill-question[data-validation]').forEach(question => {
+            const checks = parseJson(question.dataset.validation)?.checks ?? [];
+            const active = !question.hidden && !question.closest('.fill-block').hidden;
+            checks.forEach(check => {
+                const element = question.querySelector(`[data-check-id="${CSS.escape(check.id)}"]`);
+                if (!element) return;
+                const failing = active && evaluate(check.conditions, known);
+                element.hidden = !failing;
+                element.querySelectorAll('input').forEach(input => (input.disabled = !failing));
+                if (!failing) element.classList.remove('needs-attention');
+            });
+        });
+    }
+
+    // An error check must be fixed; a warning check must be confirmed before sending.
+    function consistencyProblem(question) {
+        for (const element of question.querySelectorAll('[data-check-id]:not([hidden])')) {
+            if (!element.classList.contains('is-warning')) {
+                element.classList.add('needs-attention');
+                return 'Jawaban tidak konsisten. Periksa kembali.';
+            }
+            if (!element.querySelector('input')?.checked) {
+                element.classList.add('needs-attention');
+                return 'Centang konfirmasi jika jawaban ini sudah benar.';
+            }
+            element.classList.remove('needs-attention');
+        }
+        return '';
+    }
+
+    function updateCounters() {
+        form.querySelectorAll('[data-max-length]').forEach(question => {
+            const counter = question.querySelector('[data-counter]');
+            if (!counter) return;
+            const length = fieldValue(question.querySelector('[name^="answers["]')).length;
+            const max = Number(question.dataset.maxLength);
+            counter.textContent = `${length}/${max} karakter`;
+            counter.classList.toggle('is-over', length > max);
+        });
     }
 
     function updateProgress() {
         if (!progressText) return;
-        const questions = visibleQuestions();
+        const questions = editableQuestions();
         const answered = questions.filter(question => isAnswered(answerOf(question))).length;
         const percent = questions.length ? Math.round((answered / questions.length) * 100) : 0;
         progressBar.style.width = `${percent}%`;
         progressText.textContent = `${answered} dari ${questions.length} pertanyaan terisi`;
+    }
+
+    // ── "Validasi" rules, mirroring App\Support\FieldValidation ─────────────
+
+    function isDate(value) {
+        return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
+    }
+
+    function formatDate(value) {
+        return new Date(`${value}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    function rulePasses(type, value, answer) {
+        if (!isAnswered(answer)) return true;
+        const text = Array.isArray(answer) ? '' : String(answer);
+        const lower = text.toLowerCase();
+        const target = String(value).toLowerCase();
+        switch (type) {
+            case 'min_length': return [...text].length >= Number(value);
+            case 'max_length': return [...text].length <= Number(value);
+            case 'contains': return lower.includes(target);
+            case 'not_contains': return !lower.includes(target);
+            case 'starts_with': return lower.startsWith(target);
+            case 'pattern':
+                try {
+                    return new RegExp(value, 'u').test(text);
+                } catch {
+                    return true;
+                }
+            case 'min_value': return toNumber(text) !== null && toNumber(text) >= Number(value);
+            case 'max_value': return toNumber(text) !== null && toNumber(text) <= Number(value);
+            case 'after_date': return isDate(text) && text >= value;
+            case 'before_date': return isDate(text) && text <= value;
+            case 'min_selected': return [answer].flat().length >= Number(value);
+            case 'max_selected': return [answer].flat().length <= Number(value);
+            default: return true;
+        }
+    }
+
+    function ruleMessage(type, value) {
+        switch (type) {
+            case 'min_length': return `Minimal ${value} karakter.`;
+            case 'max_length': return `Maksimal ${value} karakter.`;
+            case 'contains': return `Harus berisi "${value}".`;
+            case 'not_contains': return `Tidak boleh berisi "${value}".`;
+            case 'starts_with': return `Harus diawali dengan "${value}".`;
+            case 'pattern': return 'Format isian tidak sesuai.';
+            case 'min_value': return `Nilai minimal ${value}.`;
+            case 'max_value': return `Nilai maksimal ${value}.`;
+            case 'after_date': return `Tanggal paling awal ${formatDate(value)}.`;
+            case 'before_date': return `Tanggal paling akhir ${formatDate(value)}.`;
+            case 'min_selected': return `Pilih minimal ${value} jawaban.`;
+            case 'max_selected': return `Pilih maksimal ${value} jawaban.`;
+            default: return 'Isian tidak valid.';
+        }
+    }
+
+    function validationProblem(question, answer) {
+        const validation = parseJson(question.dataset.validation);
+        const failed = (validation?.rules ?? []).find(rule => !rulePasses(rule.type, rule.value, answer));
+        if (!failed) return '';
+        return (validation.message ?? '').trim() || ruleMessage(failed.type, failed.value);
     }
 
     // ── Inputs ─────────────────────────────────────────────────────────────
@@ -200,13 +368,15 @@
         }
 
         const answer = answerOf(question);
-        if (!isAnswered(answer)) return required ? 'Pertanyaan ini wajib diisi.' : '';
+        if (!isAnswered(answer)) return required ? 'Pertanyaan ini wajib diisi.' : consistencyProblem(question);
         if (type === 'number' && Number.isNaN(Number(answer))) return 'Isi dengan angka.';
         if (type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answer)) return 'Isi dengan alamat email yang valid.';
         if (type === 'phone' && !/^[0-9+\-\s().]{6,20}$/.test(answer)) return 'Isi dengan nomor telepon yang valid.';
         const codeDigits = question.querySelectorAll('.code-digit').length;
         if (codeDigits && !new RegExp(`^\\d{${codeDigits}}$`).test(answer)) return `Isi ${codeDigits} digit angka.`;
-        return '';
+        const maxLength = Number(question.dataset.maxLength || 0);
+        if (maxLength && [...String(answer)].length > maxLength) return `Maksimal ${maxLength} karakter.`;
+        return validationProblem(question, answer) || consistencyProblem(question);
     }
 
     // ── Draft saved in this browser ────────────────────────────────────────
@@ -308,7 +478,7 @@
     form.addEventListener('submit', event => {
         applyLogic();
         let firstInvalid = null;
-        visibleQuestions().forEach(question => {
+        editableQuestions().forEach(question => {
             const problem = problemWith(question);
             setError(question, problem);
             if (problem && !firstInvalid) firstInvalid = question;

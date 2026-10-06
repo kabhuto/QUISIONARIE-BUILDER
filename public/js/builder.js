@@ -19,11 +19,13 @@
     const periodLabel = document.querySelector('#period-label');
     const choiceTypes = config.choiceTypes;
     const nonLogicTypes = config.nonLogicTypes;
+    const valueless = config.valuelessOperators;
 
     const blocks = restoreBlocks() ?? [makeBlock('KETERANGAN UMUM')];
     let selected = blocks[0] ? { kind: 'block', id: blocks[0].id } : null;
     let dragState = null;
     let numbers = new Map();
+    let fieldTab = 'options';
 
     // ── Model ──────────────────────────────────────────────────────────────
 
@@ -48,6 +50,10 @@
         return { mode: 'dynamic', max_rows: 20, initial_rows: 3, rows: [], columns: [makeColumn('Kolom 1'), makeColumn('Kolom 2')] };
     }
 
+    function emptyValidation() {
+        return { rules: [], message: '', checks: [] };
+    }
+
     function makeQuestion(type, overrides = {}) {
         return {
             id: makeId('q'),
@@ -55,9 +61,18 @@
             label: '',
             description: '',
             required: false,
+            hidden: false,
+            disabled: false,
+            hide_label: false,
+            placeholder: '',
+            prefill: '',
+            width: 'full',
+            help_position: 'below',
+            max_length: null,
             code_length: type === 'code' ? 2 : (choiceTypes.includes(type) ? 1 : 0),
             options: choiceTypes.includes(type) ? ['Pilihan 1', 'Pilihan 2'] : [],
-            condition: null,
+            logic: null,
+            validation: emptyValidation(),
             ...(type === 'region' ? { region: defaultRegion(), label: 'Identitas wilayah' } : {}),
             ...(type === 'table' ? { table: defaultTable() } : {}),
             ...overrides,
@@ -92,25 +107,80 @@
             type: config.tableColumnTypes[column?.type] ? column.type : 'text',
             options: Array.isArray(column?.options) ? column.options.map(String) : [],
         }));
+        const maxRows = clamp(table?.max_rows, 1, config.maxTableRows, 20);
         return {
             mode: table?.mode === 'fixed' ? 'fixed' : 'dynamic',
-            max_rows: clamp(table?.max_rows, 1, config.maxTableRows, 20),
-            initial_rows: Math.min(clamp(table?.initial_rows, 1, config.maxTableRows, 3), clamp(table?.max_rows, 1, config.maxTableRows, 20)),
+            max_rows: maxRows,
+            initial_rows: Math.min(clamp(table?.initial_rows, 1, config.maxTableRows, 3), maxRows),
             rows: Array.isArray(table?.rows) ? table.rows.map(String) : [],
             columns: columns.length ? columns : defaultTable().columns,
         };
     }
 
+    function normalizeRule(rule) {
+        return {
+            question_id: String(rule?.question_id ?? ''),
+            operator: config.operators[rule?.operator] ? rule.operator : 'equals',
+            value: String(rule?.value ?? ''),
+        };
+    }
+
+    // A group is {operator: "and" | "or", rules: [...]}; rules are conditions or (one level of) nested groups.
+    function normalizeGroup(group, depth = 0) {
+        return {
+            operator: group?.operator === 'or' ? 'or' : 'and',
+            rules: (Array.isArray(group?.rules) ? group.rules : [])
+                .filter(rule => rule && typeof rule === 'object')
+                .map(rule => (Array.isArray(rule.rules) && depth < 1 ? normalizeGroup(rule, depth + 1) : normalizeRule(rule))),
+        };
+    }
+
+    function normalizeLogic(logic) {
+        if (!logic?.conditions) return null;
+        return {
+            conditions: normalizeGroup(logic.conditions),
+            actions: (Array.isArray(logic.actions) ? logic.actions : []).filter(action => config.logicActions[action]),
+        };
+    }
+
+    function normalizeValidation(validation) {
+        return {
+            rules: (Array.isArray(validation?.rules) ? validation.rules : [])
+                .filter(rule => config.validationRules[rule?.type])
+                .map(rule => ({ type: rule.type, value: String(rule.value ?? '') })),
+            message: String(validation?.message ?? ''),
+            checks: (Array.isArray(validation?.checks) ? validation.checks : []).map(check => ({
+                id: String(check?.id || makeId('k')),
+                level: check?.level === 'warning' ? 'warning' : 'error',
+                conditions: normalizeGroup(check?.conditions),
+                message: String(check?.message ?? ''),
+            })),
+        };
+    }
+
     function normalizeQuestion(question) {
+        // Older questions had a single "show when" condition: that is "hidden" plus logic that shows it.
+        const legacy = question.condition?.question_id && !question.logic;
         const normalized = {
             id: String(question.id || makeId('q')),
             type: question.type,
             label: String(question.label ?? ''),
             description: String(question.description ?? ''),
             required: Boolean(question.required),
+            hidden: legacy || Boolean(question.hidden),
+            disabled: Boolean(question.disabled),
+            hide_label: Boolean(question.hide_label),
+            placeholder: String(question.placeholder ?? ''),
+            prefill: String(question.prefill ?? ''),
+            width: config.fieldWidths[question.width] ? question.width : 'full',
+            help_position: question.help_position === 'above' ? 'above' : 'below',
+            max_length: question.max_length ? clamp(question.max_length, 1, 5000, null) : null,
             code_length: clamp(question.code_length, 0, config.maxCodeLength, 0),
             options: Array.isArray(question.options) ? question.options.map(String) : [],
-            condition: normalizeCondition(question.condition),
+            logic: legacy
+                ? { conditions: { operator: 'and', rules: [normalizeRule(question.condition)] }, actions: ['show'] }
+                : normalizeLogic(question.logic),
+            validation: normalizeValidation(question.validation),
         };
         if (question.type === 'region') normalized.region = normalizeRegion(question.region);
         if (question.type === 'table') normalized.table = normalizeTable(question.table);
@@ -137,11 +207,7 @@
 
     function normalizeCondition(condition) {
         if (!condition || typeof condition !== 'object' || !condition.question_id) return null;
-        return {
-            question_id: String(condition.question_id),
-            operator: config.operators[condition.operator] ? condition.operator : 'equals',
-            value: String(condition.value ?? ''),
-        };
+        return normalizeRule(condition);
     }
 
     function findBlock(id) {
@@ -206,43 +272,128 @@
         return selected?.kind === kind && selected.id === id;
     }
 
-    // ── Display logic ──────────────────────────────────────────────────────
+    // ── Logic ──────────────────────────────────────────────────────────────
 
-    function earlierQuestions(kind, id) {
+    // Questions a rule may refer to: earlier, logic-capable ones (and the question itself for consistency checks).
+    function earlierQuestions(kind, id, includeSelf = false) {
         const earlier = [];
         for (const block of blocks) {
             if (kind === 'block' && block.id === id) return earlier;
             for (const question of block.questions) {
-                if (kind === 'question' && question.id === id) return earlier;
-                if (!nonLogicTypes.includes(question.type)) earlier.push({ question, number: numbers.get(question.id) });
+                const usable = !nonLogicTypes.includes(question.type);
+                if (kind === 'question' && question.id === id) {
+                    if (includeSelf && usable) earlier.push({ question, number: numbers.get(question.id) });
+                    return earlier;
+                }
+                if (usable) earlier.push({ question, number: numbers.get(question.id) });
             }
         }
         return earlier;
     }
 
-    function targetOf(kind, id) {
-        return kind === 'block' ? findBlock(id)?.block : findQuestion(id)?.question;
+    function questionLabel(item) {
+        return `${item.number} ${truncate(item.question.label || '(tanpa teks)', 30)}`;
     }
 
-    function conditionProblem(kind, id) {
-        const condition = targetOf(kind, id)?.condition;
-        if (!condition) return '';
-        const subject = kind === 'block' ? 'blok' : 'pertanyaan';
-        if (!earlierQuestions(kind, id).some(item => item.question.id === condition.question_id)) return `Logika ${subject} merujuk pertanyaan yang tidak ada sebelumnya.`;
-        if (condition.operator !== 'answered' && !condition.value.trim()) return `Logika ${subject} belum memiliki nilai jawaban.`;
+    function groupProblem(group, available) {
+        if (!group?.rules?.length) return 'belum memiliki aturan';
+        for (const rule of group.rules) {
+            if (rule.rules) {
+                const problem = groupProblem(rule, available);
+                if (problem) return problem;
+                continue;
+            }
+            if (!available.some(item => item.question.id === rule.question_id)) return 'merujuk pertanyaan yang tidak ada sebelumnya';
+            if (!valueless.includes(rule.operator) && !rule.value.trim()) return 'belum memiliki nilai jawaban';
+            if (['greater_than', 'less_than'].includes(rule.operator) && Number.isNaN(Number(rule.value.replace(',', '.')))) return 'harus memakai angka untuk pembanding lebih/kurang dari';
+        }
         return '';
     }
 
+    function allowedActions(question) {
+        return [question.hidden ? 'show' : 'hide', question.disabled ? 'enable' : 'disable', question.required ? 'optional' : 'require'];
+    }
+
+    function logicProblem(question) {
+        if (!question.logic) return '';
+        const problem = groupProblem(question.logic.conditions, earlierQuestions('question', question.id));
+        if (problem) return `Logika ${problem}.`;
+        if (!question.logic.actions.length) return 'Logika belum memiliki tindakan.';
+        if (question.logic.actions.some(action => !allowedActions(question).includes(action))) return 'Logika memiliki tindakan yang tidak sesuai dengan pengaturan isian.';
+        return '';
+    }
+
+    function validationProblemOf(question) {
+        for (const rule of question.validation.rules) {
+            const definition = config.validationRules[rule.type];
+            const value = rule.value.trim();
+            if (!value) return `Aturan "${definition.label}" belum memiliki nilai.`;
+            if (definition.input === 'number' && Number.isNaN(Number(value))) return `Aturan "${definition.label}" harus berupa angka.`;
+            if (definition.input === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return `Aturan "${definition.label}" harus berupa tanggal.`;
+            if (rule.type === 'pattern') {
+                try {
+                    new RegExp(value, 'u');
+                } catch {
+                    return 'Pola (regex) pada aturan isian tidak valid.';
+                }
+            }
+        }
+        for (const check of question.validation.checks) {
+            if (!check.message.trim()) return 'Pemeriksaan konsistensi belum memiliki pesan.';
+            const problem = groupProblem(check.conditions, earlierQuestions('question', question.id, true));
+            if (problem) return `Pemeriksaan konsistensi ${problem}.`;
+        }
+        return '';
+    }
+
+    function describeGroup(group, available) {
+        return group.rules.map(rule => {
+            if (rule.rules) return `(${describeGroup(rule, available)})`;
+            const source = available.find(item => item.question.id === rule.question_id);
+            const value = valueless.includes(rule.operator) ? '' : ` ${rule.value}`;
+            return `${source?.number ?? '?'} ${config.operators[rule.operator]}${value}`;
+        }).join(group.operator === 'or' ? ' atau ' : ' dan ');
+    }
+
+    // Block conditions keep the simple "show this block when …" form.
+    function conditionProblem(kind, id) {
+        const condition = findBlock(id)?.block.condition;
+        if (kind !== 'block' || !condition) return '';
+        if (!earlierQuestions('block', id).some(item => item.question.id === condition.question_id)) return 'Logika blok merujuk pertanyaan yang tidak ada sebelumnya.';
+        if (!valueless.includes(condition.operator) && !condition.value.trim()) return 'Logika blok belum memiliki nilai jawaban.';
+        return '';
+    }
+
+    function chip(text, className = '') {
+        return `<span class="logic-badge ${className}" title="${escapeHtml(text)}">${escapeHtml(truncate(text, 46))}</span>`;
+    }
+
     function logicBadge(kind, id) {
-        const condition = targetOf(kind, id)?.condition;
-        if (!condition) return '';
-        const problem = conditionProblem(kind, id);
-        if (problem) return `<span class="logic-badge is-invalid" title="${escapeHtml(problem)}">⚠ Logika perlu diperbaiki</span>`;
-        const source = earlierQuestions(kind, id).find(item => item.question.id === condition.question_id);
-        const text = condition.operator === 'answered'
-            ? `${source.number} sudah diisi`
-            : `${source.number} ${condition.operator === 'equals' ? '=' : '≠'} ${condition.value}`;
-        return `<span class="logic-badge" title="Hanya tampil jika ${escapeHtml(text)}">⤷ Jika ${escapeHtml(truncate(text, 34))}</span>`;
+        if (kind === 'block') {
+            const condition = findBlock(id)?.block.condition;
+            if (!condition) return '';
+            if (conditionProblem(kind, id)) return chip('⚠ Logika perlu diperbaiki', 'is-invalid');
+            return chip(`⤷ Jika ${describeGroup({ operator: 'and', rules: [condition] }, earlierQuestions('block', id))}`);
+        }
+
+        const question = findQuestion(id)?.question;
+        if (!question) return '';
+        const chips = [];
+        if (question.hidden) chips.push(chip('Tersembunyi', 'is-flag'));
+        if (question.disabled) chips.push(chip('Nonaktif', 'is-flag'));
+        if (question.width !== 'full') chips.push(chip(`Lebar ${question.width}`, 'is-flag'));
+        if (question.logic) {
+            chips.push(logicProblem(question)
+                ? chip('⚠ Logika perlu diperbaiki', 'is-invalid')
+                : chip(`⤷ Jika ${describeGroup(question.logic.conditions, earlierQuestions('question', id))} → ${question.logic.actions.map(action => config.logicActions[action]).join(', ')}`));
+        }
+        const validationCount = question.validation.rules.length + question.validation.checks.length;
+        if (validationCount) {
+            chips.push(validationProblemOf(question)
+                ? chip('⚠ Validasi perlu diperbaiki', 'is-invalid')
+                : chip(`✓ ${validationCount} validasi`, 'is-check'));
+        }
+        return chips.join('');
     }
 
     function refreshLogicSlot(kind, id) {
@@ -252,49 +403,60 @@
         if (slot) slot.innerHTML = logicBadge(kind, id);
     }
 
+    function refreshAllBadges() {
+        blocks.forEach(block => {
+            refreshLogicSlot('block', block.id);
+            block.questions.forEach(question => refreshLogicSlot('question', question.id));
+        });
+    }
+
+    function pruneGroup(group, removed) {
+        group.rules = group.rules
+            .map(rule => (rule.rules ? pruneGroup(rule, removed) : rule))
+            .filter(rule => (rule.rules ? rule.rules.length > 0 : !removed.has(rule.question_id)));
+        return group;
+    }
+
+    // Removes rules that point at deleted (or no longer logic-capable) questions.
     function clearConditionsOn(questionIds) {
         const removed = new Set(questionIds);
         blocks.forEach(block => {
             if (removed.has(block.condition?.question_id)) block.condition = null;
             block.questions.forEach(question => {
-                if (removed.has(question.condition?.question_id)) question.condition = null;
+                if (question.logic && !pruneGroup(question.logic.conditions, removed).rules.length) question.logic = null;
+                question.validation.checks = question.validation.checks.filter(check => pruneGroup(check.conditions, removed).rules.length > 0);
             });
         });
     }
 
+    // Block-level "show this block when" editor (one condition).
     function renderLogicEditor() {
         const container = selectionPanel.querySelector('#logic-editor');
-        const target = selected && targetOf(selected.kind, selected.id);
+        const target = selected?.kind === 'block' && findBlock(selected.id)?.block;
         if (!container || !target) return;
 
-        const earlier = earlierQuestions(selected.kind, selected.id);
+        const earlier = earlierQuestions('block', selected.id);
         const condition = target.condition;
         const source = condition && earlier.find(item => item.question.id === condition.question_id);
-        const subject = selected.kind === 'block' ? 'blok' : 'isian';
-        let html = `<div class="setting-label"><span>Logika tampil</span><span class="setting-value">${condition ? 'BERSYARAT' : 'SELALU'}</span></div>`;
+        let html = `<div class="setting-label"><span>Logika tampil blok</span><span class="setting-value">${condition ? 'BERSYARAT' : 'SELALU'}</span></div>`;
 
         if (!earlier.length) {
             container.innerHTML = `${html}<p class="setting-note">Belum ada pertanyaan sebelumnya yang bisa dijadikan syarat.</p>`;
             return;
         }
 
-        html += `<label class="setting-field"><span>Tampilkan ${subject} ini</span>
+        html += `<label class="setting-field"><span>Tampilkan blok ini</span>
             <select class="setting-select" data-logic-field="question_id">
                 <option value="">Selalu tampil</option>
-                ${earlier.map(item => `<option value="${escapeHtml(item.question.id)}" ${item.question.id === condition?.question_id ? 'selected' : ''}>Jika ${item.number} ${escapeHtml(truncate(item.question.label || '(tanpa teks)', 34))}</option>`).join('')}
+                ${earlier.map(item => `<option value="${escapeHtml(item.question.id)}" ${item.question.id === condition?.question_id ? 'selected' : ''}>Jika ${escapeHtml(questionLabel(item))}</option>`).join('')}
             </select></label>`;
-
-        if (condition && !source) {
-            html += '<p class="setting-note is-warning">Pertanyaan syarat tidak lagi berada sebelum elemen ini. Pilih ulang.</p>';
-        }
 
         if (source) {
             html += `<label class="setting-field"><span>Jawabannya</span>
                 <select class="setting-select" data-logic-field="operator">
                     ${Object.entries(config.operators).map(([operator, label]) => `<option value="${operator}" ${operator === condition.operator ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
                 </select></label>`;
-
-            if (condition.operator !== 'answered') {
+            if (!valueless.includes(condition.operator)) {
                 const options = choiceTypes.includes(source.question.type) ? source.question.options : [];
                 html += options.length
                     ? `<label class="setting-field"><span>Nilai</span><select class="setting-select" data-logic-field="value">
@@ -309,21 +471,11 @@
     }
 
     function updateCondition(field, value) {
-        const target = selected && targetOf(selected.kind, selected.id);
+        const target = selected?.kind === 'block' && findBlock(selected.id)?.block;
         if (!target) return;
-
         if (field === 'question_id') {
-            if (!value) {
-                target.condition = null;
-            } else {
-                const source = findQuestion(value)?.question;
-                const keepValue = target.condition?.question_id === value;
-                target.condition = {
-                    question_id: value,
-                    operator: target.condition?.operator ?? 'equals',
-                    value: keepValue ? target.condition.value : (source && choiceTypes.includes(source.type) ? source.options[0] ?? '' : ''),
-                };
-            }
+            const source = value && findQuestion(value)?.question;
+            target.condition = value ? { question_id: value, operator: target.condition?.operator ?? 'equals', value: source && choiceTypes.includes(source.type) ? source.options[0] ?? '' : '' } : null;
             renderLogicEditor();
         } else if (field === 'operator' && target.condition) {
             target.condition.operator = value;
@@ -331,11 +483,81 @@
         } else if (field === 'value' && target.condition) {
             target.condition.value = value;
         }
+        refreshLogicSlot('block', selected.id);
+    }
 
-        refreshLogicSlot(selected.kind, selected.id);
-        if (selected.kind === 'question') {
-            blockList.querySelector(`[data-question-id="${CSS.escape(selected.id)}"]`)?.classList.toggle('is-branch', Boolean(target.condition));
+    // ── Rule editor (field logic and consistency checks) ───────────────────
+
+    function newRule(available) {
+        const source = available[0]?.question;
+        return { question_id: source?.id ?? '', operator: 'equals', value: source && choiceTypes.includes(source.type) ? source.options[0] ?? '' : '' };
+    }
+
+    function ruleValueControl(rule, source) {
+        if (valueless.includes(rule.operator)) return '';
+        const options = source && choiceTypes.includes(source.question.type) ? source.question.options : [];
+        if (options.length && !['greater_than', 'less_than'].includes(rule.operator)) {
+            return `<select class="setting-select" data-rule-field="value" aria-label="Nilai">
+                <option value="">Pilih jawaban…</option>
+                ${options.map(option => `<option value="${escapeHtml(option)}" ${option === rule.value ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
+            </select>`;
         }
+        const numeric = ['greater_than', 'less_than'].includes(rule.operator) || ['number', 'currency'].includes(source?.question.type);
+        return `<input class="setting-select" type="${numeric ? 'number' : 'text'}" step="any" maxlength="255" value="${escapeHtml(rule.value)}" placeholder="Nilai" data-rule-field="value" aria-label="Nilai">`;
+    }
+
+    function ruleEditor(rule, available, scope, path) {
+        const source = available.find(item => item.question.id === rule.question_id);
+        return `
+            <div class="rule-row ${source ? '' : 'is-invalid'}" data-scope="${scope}" data-path="${path.join('.')}">
+                <select class="setting-select" data-rule-field="question_id" aria-label="Pertanyaan">
+                    ${source ? '' : '<option value="" selected>Pilih pertanyaan…</option>'}
+                    ${available.map(item => `<option value="${escapeHtml(item.question.id)}" ${item.question.id === rule.question_id ? 'selected' : ''}>${escapeHtml(questionLabel(item))}</option>`).join('')}
+                </select>
+                <div class="rule-row-line">
+                    <select class="setting-select" data-rule-field="operator" aria-label="Pembanding">
+                        ${Object.entries(config.operators).map(([operator, label]) => `<option value="${operator}" ${operator === rule.operator ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+                    </select>
+                    ${ruleValueControl(rule, source)}
+                    <button class="question-remove" type="button" data-group-action="remove-rule" aria-label="Hapus aturan">×</button>
+                </div>
+            </div>`;
+    }
+
+    function groupEditor(group, available, scope, path = []) {
+        const isRoot = path.length === 0;
+        return `
+            <div class="rule-group ${isRoot ? 'is-root' : 'is-nested'}" data-scope="${scope}" data-path="${path.join('.')}">
+                <div class="rule-group-head">
+                    <select class="setting-select" data-group-field="operator" aria-label="Cara menggabungkan aturan">
+                        <option value="and" ${group.operator === 'and' ? 'selected' : ''}>Semua aturan terpenuhi (DAN)</option>
+                        <option value="or" ${group.operator === 'or' ? 'selected' : ''}>Salah satu terpenuhi (ATAU)</option>
+                    </select>
+                    ${isRoot ? '' : '<button class="question-remove" type="button" data-group-action="remove-group" aria-label="Hapus grup aturan">×</button>'}
+                </div>
+                ${group.rules.map((rule, index) => (rule.rules ? groupEditor(rule, available, scope, [...path, index]) : ruleEditor(rule, available, scope, [...path, index]))).join('')}
+                <div class="rule-group-add">
+                    <button class="mini-button" type="button" data-group-action="add-rule">+ Aturan</button>
+                    ${isRoot ? '<button class="mini-button" type="button" data-group-action="add-group">+ Grup aturan</button>' : ''}
+                </div>
+            </div>`;
+    }
+
+    function scopeRoot(question, scope) {
+        if (scope === 'logic') return question.logic?.conditions;
+        return question.validation.checks[Number(scope.split(':')[1])]?.conditions;
+    }
+
+    function parsePath(value) {
+        return value ? value.split('.').map(Number) : [];
+    }
+
+    function nodeAt(root, path) {
+        return path.reduce((node, index) => node?.rules[index], root);
+    }
+
+    function scopeAvailable(question, scope) {
+        return earlierQuestions('question', question.id, scope !== 'logic');
     }
 
     // ── Canvas rendering ───────────────────────────────────────────────────
@@ -393,7 +615,7 @@
             </div>`;
     }
 
-    // "If the answer is X, ask …": one button per option adds a follow-up question with that condition.
+    // "If the answer is X, ask …": one button per option adds a hidden follow-up that shows on that answer.
     function branchActions(question) {
         if (!question.options.length) return '';
         return `
@@ -407,21 +629,22 @@
         if (choiceTypes.includes(question.type)) {
             const options = question.options.length ? question.options : ['Pilihan 1', 'Pilihan 2'];
             const branches = branchActions(question);
-            if (question.type === 'dropdown') return `<div class="answer-line answer-select">${escapeHtml(options[0])}<span>▾</span></div>${branches}`;
+            if (question.type === 'dropdown') return `<div class="answer-line answer-select">${escapeHtml(question.placeholder || options[0])}<span>▾</span></div>${branches}`;
             return `<div class="choice-list">${options.map((option, index) => `<span class="choice-option ${question.type === 'multiple' ? 'multiple' : ''}"><i></i><b>${index + 1}.</b> ${escapeHtml(option)}</span>`).join('')}</div>${branches}`;
         }
+        const hint = question.prefill || question.placeholder;
         switch (question.type) {
             case 'region': return regionPreview(question);
             case 'table': return tableEditor(question);
             case 'info':
             case 'code': return '';
-            case 'long': return '<div class="answer-area">Jawaban...</div>';
-            case 'date': return '<div class="answer-line">Tgl ___ / Bln ___ / Thn _____</div>';
-            case 'number': return '<div class="answer-line">Masukkan angka</div>';
-            case 'currency': return '<div class="answer-line"><b>Rp</b> ........................</div>';
-            case 'email': return '<div class="answer-line">nama@contoh.go.id</div>';
-            case 'phone': return '<div class="answer-line">08xx-xxxx-xxxx</div>';
-            default: return '<div class="answer-line">Jawaban...</div>';
+            case 'long': return `<div class="answer-area">${escapeHtml(hint || 'Jawaban...')}</div>`;
+            case 'date': return `<div class="answer-line">${escapeHtml(question.prefill || 'Tgl ___ / Bln ___ / Thn _____')}</div>`;
+            case 'number': return `<div class="answer-line">${escapeHtml(hint || 'Masukkan angka')}</div>`;
+            case 'currency': return `<div class="answer-line"><b>Rp</b> ${escapeHtml(hint || '........................')}</div>`;
+            case 'email': return `<div class="answer-line">${escapeHtml(hint || 'nama@contoh.go.id')}</div>`;
+            case 'phone': return `<div class="answer-line">${escapeHtml(hint || '08xx-xxxx-xxxx')}</div>`;
+            default: return `<div class="answer-line">${escapeHtml(hint || 'Jawaban...')}</div>`;
         }
     }
 
@@ -437,10 +660,18 @@
             </span>`;
     }
 
+    const ICONS = {
+        plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+        gear: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>',
+        trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>',
+    };
+
     function questionRow(question) {
         const number = numbers.get(question.id);
         const isInfo = question.type === 'info';
-        const classes = ['question-row', `is-${question.type}`, question.condition && 'is-branch', isSelected('question', question.id) && 'is-selected', question.required && 'is-required'].filter(Boolean).join(' ');
+        const isBranch = question.hidden && question.logic?.actions.includes('show');
+        const classes = ['question-row', `is-${question.type}`, isBranch && 'is-branch', question.hidden && !isBranch && 'is-hidden-field', isSelected('question', question.id) && 'is-selected', question.required && 'is-required'].filter(Boolean).join(' ');
+        const subject = isInfo ? 'keterangan' : `pertanyaan ${number}`;
         const description = isInfo
             ? `<textarea class="question-desc" rows="2" maxlength="1000" placeholder="Isi keterangan untuk responden" data-field="description">${escapeHtml(question.description)}</textarea>`
             : `<input class="question-desc" type="text" maxlength="1000" value="${escapeHtml(question.description)}" placeholder="Petunjuk pengisian (opsional)" data-field="description">`;
@@ -449,14 +680,18 @@
                 <span class="drag-handle" data-drag-handle title="Seret untuk memindahkan">⠿</span>
                 <span class="question-number">${isInfo ? 'i' : number}</span>
                 <div class="question-main">
-                    <input class="question-label" type="text" maxlength="255" value="${escapeHtml(question.label)}" placeholder="${isInfo ? 'Judul keterangan' : 'Tulis pertanyaan...'}" data-field="label" aria-label="Teks ${isInfo ? 'keterangan' : `pertanyaan ${number}`}">
+                    <input class="question-label" type="text" maxlength="255" value="${escapeHtml(question.label)}" placeholder="${isInfo ? 'Judul keterangan' : 'Tulis pertanyaan...'}" data-field="label" aria-label="Teks ${subject}">
                     ${description}
                     <span class="logic-slot">${logicBadge('question', question.id)}</span>
                     <div class="question-preview">${previewFor(question)}</div>
                     ${choiceTypes.includes(question.type) ? `<label class="option-editor"><span>PILIHAN</span><textarea data-field="options" aria-label="Pilihan jawaban, satu per baris" placeholder="Satu pilihan per baris">${escapeHtml(question.options.join('\n'))}</textarea></label>` : ''}
                 </div>
                 ${codeBoxes(question)}
-                <button class="question-remove" type="button" data-action="remove-question" aria-label="Hapus ${isInfo ? 'keterangan' : `pertanyaan ${number}`}">×</button>
+                <div class="question-tools">
+                    <button type="button" data-action="insert-after" title="Tambah pertanyaan di bawahnya" aria-label="Tambah pertanyaan di bawah ${subject}">${ICONS.plus}</button>
+                    <button type="button" data-action="open-settings" title="Pengaturan isian: opsi, logika, validasi" aria-label="Pengaturan ${subject}">${ICONS.gear}</button>
+                    <button type="button" class="is-danger" data-action="remove-question" title="Hapus" aria-label="Hapus ${subject}">${ICONS.trash}</button>
+                </div>
             </article>`;
     }
 
@@ -494,7 +729,12 @@
         if (row) row.querySelector('.question-preview').innerHTML = previewFor(question);
     }
 
-    // ── Selection panel ────────────────────────────────────────────────────
+    // ── Settings panel ─────────────────────────────────────────────────────
+
+    function showPane(name) {
+        document.querySelectorAll('[data-panel-tab]').forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.panelTab === name)));
+        document.querySelectorAll('[data-panel-pane]').forEach(pane => (pane.hidden = pane.dataset.panelPane !== name));
+    }
 
     function regionSettings(question) {
         return `
@@ -531,6 +771,136 @@
             <p class="setting-note">Judul, jenis, dan urutan kolom diatur langsung di tabel pada lembar.</p>`;
     }
 
+    function flagButton(question, flag, label, icon) {
+        return `<button class="flag-toggle" type="button" data-flag="${flag}" aria-pressed="${question[flag] ? 'true' : 'false'}"><span aria-hidden="true">${icon}</span>${label}</button>`;
+    }
+
+    function optionsTab(question) {
+        const isInfo = question.type === 'info';
+        const hasCodeBoxes = !nonLogicTypes.includes(question.type);
+        const prefill = config.prefillTypes.includes(question.type);
+        const placeholder = config.placeholderTypes.includes(question.type);
+        const prefillControl = ['single', 'dropdown'].includes(question.type)
+            ? `<select class="setting-select" data-option="prefill"><option value="">(tanpa nilai awal)</option>${question.options.map(option => `<option value="${escapeHtml(option)}" ${option === question.prefill ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select>`
+            : `<input class="setting-select" type="${question.type === 'date' ? 'date' : (['number', 'currency'].includes(question.type) ? 'number' : 'text')}" maxlength="255" value="${escapeHtml(question.prefill)}" data-option="prefill">`;
+        return `
+            <label class="setting-field"><span>Nama isian</span><input class="setting-select" type="text" maxlength="255" value="${escapeHtml(question.label)}" data-option="label"></label>
+            <div class="flag-toggles">
+                ${isInfo ? '' : flagButton(question, 'required', 'Wajib', '✱')}
+                ${flagButton(question, 'hidden', 'Tersembunyi', '◌')}
+                ${isInfo ? '' : flagButton(question, 'disabled', 'Nonaktif', '⊘')}
+            </div>
+            ${question.hidden ? '<p class="setting-note">Isian tersembunyi tidak tampil dan tidak wajib diisi, kecuali dimunculkan lewat tab Logika.</p>' : ''}
+            ${question.disabled ? '<p class="setting-note">Isian nonaktif tampil tetapi tidak bisa diubah responden; nilainya diambil dari nilai awal.</p>' : ''}
+            <label class="setting-field"><span>Jenis isian</span>
+                <select class="setting-select" data-setting="type">
+                    ${Object.entries(config.questionTypes).map(([type, label]) => `<option value="${type}" ${type === question.type ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+                </select>
+            </label>
+            ${hasCodeBoxes ? `<label class="setting-field"><span>Jumlah kotak kode <small>(0–${config.maxCodeLength})</small></span>
+                <input class="setting-select" type="number" min="0" max="${config.maxCodeLength}" value="${question.code_length}" data-setting="code_length"></label>` : ''}
+            ${question.type === 'region' ? `<div class="type-settings">${regionSettings(question)}</div>` : ''}
+            ${question.type === 'table' ? `<div class="type-settings">${tableSettings(question)}</div>` : ''}
+            <div class="option-section">
+                <div class="setting-label"><span>Kustomisasi</span></div>
+                ${isInfo ? '' : `<label class="required-toggle"><input type="checkbox" data-option="hide_label" ${question.hide_label ? 'checked' : ''}><span class="toggle-track"></span><span>Sembunyikan nama isian</span></label>`}
+                ${prefill ? `<label class="setting-field"><span>Nilai awal</span>${prefillControl}</label>` : ''}
+                ${placeholder ? `<label class="setting-field"><span>Teks contoh (placeholder)</span><input class="setting-select" type="text" maxlength="255" value="${escapeHtml(question.placeholder)}" data-option="placeholder"></label>` : ''}
+                <div class="setting-field"><span>Lebar isian (formulir responden)</span>
+                    <div class="width-options">
+                        ${Object.entries(config.fieldWidths).map(([width, label]) => `<label><input class="sr-only" type="radio" name="width-${escapeHtml(question.id)}" value="${width}" data-option="width" ${question.width === width ? 'checked' : ''}><span>${escapeHtml(label)}</span></label>`).join('')}
+                    </div>
+                </div>
+                <label class="setting-field"><span>${isInfo ? 'Isi keterangan' : 'Teks bantuan'}</span><textarea class="setting-select setting-textarea" rows="3" maxlength="1000" data-option="description">${escapeHtml(question.description)}</textarea></label>
+                ${isInfo || ['region', 'table'].includes(question.type) ? '' : `<div class="setting-field"><span>Posisi teks bantuan</span>
+                    <div class="segmented">
+                        <label><input class="sr-only" type="radio" name="help-${escapeHtml(question.id)}" value="below" data-option="help_position" ${question.help_position === 'below' ? 'checked' : ''}><span>Di bawah isian</span></label>
+                        <label><input class="sr-only" type="radio" name="help-${escapeHtml(question.id)}" value="above" data-option="help_position" ${question.help_position === 'above' ? 'checked' : ''}><span>Di atas isian</span></label>
+                    </div></div>`}
+                ${['short', 'long'].includes(question.type) ? `<label class="setting-field"><span>Batas karakter <small>(kosong = bawaan)</small></span><input class="setting-select" type="number" min="1" max="5000" value="${question.max_length ?? ''}" data-option="max_length"></label>` : ''}
+            </div>`;
+    }
+
+    function logicTab(question) {
+        const available = earlierQuestions('question', question.id);
+        const others = blocks.flatMap(block => block.questions).filter(item => item.id !== question.id && item.type !== 'info');
+        const withLogic = others.filter(item => item.logic);
+        const otherLabel = item => `${numbers.get(item.id) ?? 'i'} ${truncate(item.label || '(tanpa teks)', 28)}`;
+        const tools = `
+            <div class="logic-tools">
+                <select class="setting-select" data-logic-tool="copy-from" aria-label="Salin logika dari" ${withLogic.length ? '' : 'disabled'}>
+                    <option value="">Salin dari…</option>
+                    ${withLogic.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(otherLabel(item))}</option>`).join('')}
+                </select>
+                <select class="setting-select" data-logic-tool="copy-to" aria-label="Salin logika ke" ${question.logic && others.length ? '' : 'disabled'}>
+                    <option value="">Salin ke…</option>
+                    ${others.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(otherLabel(item))}</option>`).join('')}
+                </select>
+                <button class="mini-button" type="button" data-logic-tool="clear" ${question.logic ? '' : 'disabled'}>Hapus</button>
+            </div>`;
+
+        if (!available.length) return `${tools}<p class="setting-note">Belum ada pertanyaan sebelumnya yang bisa dijadikan syarat.</p>`;
+
+        const conditions = question.logic
+            ? groupEditor(question.logic.conditions, available, 'logic')
+            : '<button class="mini-button is-wide" type="button" data-logic-tool="start">+ Tambah aturan</button>';
+        const actions = allowedActions(question).map(action => `
+            <label class="action-option"><input type="checkbox" data-logic-action="${action}" ${question.logic?.actions.includes(action) ? 'checked' : ''} ${question.logic ? '' : 'disabled'}><span>${escapeHtml(config.logicActions[action][0].toUpperCase() + config.logicActions[action].slice(1))} isian ini</span></label>`).join('');
+        const problem = logicProblem(question);
+        return `
+            ${tools}
+            <div class="logic-step"><span>Jika kondisi berikut terpenuhi</span></div>
+            ${conditions}
+            <div class="logic-then">maka</div>
+            <div class="logic-step"><span>Lakukan tindakan berikut</span></div>
+            <div class="action-list">${actions}</div>
+            ${problem ? `<p class="setting-note is-warning">${escapeHtml(problem)}</p>` : ''}
+            <p class="setting-note">Isian tersembunyi tidak pernah wajib diisi. Aturan hanya bisa merujuk pertanyaan sebelumnya.</p>`;
+    }
+
+    function validationTab(question) {
+        const available = earlierQuestions('question', question.id, true);
+        const ruleTypes = Object.entries(config.validationRules).filter(([, rule]) => rule.types.includes(question.type));
+        const checks = question.validation.checks.map((check, index) => `
+            <div class="check-card is-${check.level}" data-check-index="${index}">
+                <div class="check-card-head">
+                    <select class="setting-select" data-check-field="level" aria-label="Tingkat pemeriksaan">
+                        ${Object.entries(config.checkLevels).map(([level, label]) => `<option value="${level}" ${level === check.level ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+                    </select>
+                    <button class="question-remove" type="button" data-check-action="remove" aria-label="Hapus pemeriksaan">×</button>
+                </div>
+                <p class="setting-note">Tampilkan pesan jika:</p>
+                ${groupEditor(check.conditions, available, `check:${index}`)}
+                <label class="setting-field"><span>Pesan</span><input class="setting-select" type="text" maxlength="255" value="${escapeHtml(check.message)}" placeholder="mis. Apakah benar responden laki-laki sedang hamil?" data-check-field="message"></label>
+            </div>`).join('');
+        const rules = question.validation.rules.map((rule, index) => {
+            const input = config.validationRules[rule.type]?.input ?? 'text';
+            return `
+                <div class="vrule" data-rule-index="${index}">
+                    <select class="setting-select" data-vrule-field="type" aria-label="Jenis aturan">
+                        ${ruleTypes.map(([type, definition]) => `<option value="${type}" ${type === rule.type ? 'selected' : ''}>${escapeHtml(definition.label)}</option>`).join('')}
+                    </select>
+                    <div class="rule-row-line">
+                        <input class="setting-select" type="${input}" value="${escapeHtml(rule.value)}" placeholder="Nilai" data-vrule-field="value" aria-label="Nilai aturan">
+                        <button class="question-remove" type="button" data-vrule-action="remove" aria-label="Hapus aturan">×</button>
+                    </div>
+                </div>`;
+        }).join('');
+        const problem = validationProblemOf(question);
+
+        return `
+            <div class="logic-step"><span>Pemeriksaan konsistensi</span></div>
+            <p class="setting-note">Munculkan galat atau peringatan saat jawaban tidak masuk akal, mis. 103 Jenis kelamin = Laki-laki <b>dan</b> pertanyaan ini = Ya (hamil). Galat harus diperbaiki; peringatan boleh dikonfirmasi responden.</p>
+            ${available.length ? checks : '<p class="setting-note">Jenis isian ini belum bisa dijadikan syarat.</p>'}
+            ${available.length && question.validation.checks.length < config.maxChecks ? '<button class="mini-button is-wide" type="button" data-check-action="add">+ Tambah pemeriksaan</button>' : ''}
+            ${ruleTypes.length ? `
+                <div class="logic-step"><span>Aturan isian</span></div>
+                ${rules}
+                ${question.validation.rules.length < 10 ? '<button class="mini-button is-wide" type="button" data-vrule-action="add">+ Tambah aturan isian</button>' : ''}
+                <label class="setting-field"><span>Pesan bila aturan isian tidak terpenuhi <small>(opsional)</small></span><input class="setting-select" type="text" maxlength="255" value="${escapeHtml(question.validation.message)}" data-vrule-field="message"></label>` : ''}
+            ${problem ? `<p class="setting-note is-warning">${escapeHtml(problem)}</p>` : ''}`;
+    }
+
     function renderSelectionPanel() {
         const foundQuestion = selected?.kind === 'question' ? findQuestion(selected.id) : null;
         const foundBlock = selected?.kind === 'block' ? findBlock(selected.id) : null;
@@ -538,23 +908,22 @@
         if (foundQuestion) {
             const { question, blockIndex } = foundQuestion;
             const isInfo = question.type === 'info';
-            const hasCodeBoxes = !nonLogicTypes.includes(question.type);
+            const logicCount = question.logic ? 1 : 0;
+            const validationCount = question.validation.rules.length + question.validation.checks.length;
+            const body = fieldTab === 'logic' ? logicTab(question) : (fieldTab === 'validation' ? validationTab(question) : optionsTab(question));
             selectionPanel.innerHTML = `
-                <div class="setting-label"><span>${isInfo ? 'Keterangan' : `Pertanyaan ${numbers.get(question.id)}`}</span><span class="setting-value">BLOK ${toRoman(blockIndex + 1)}</span></div>
-                <label class="setting-field"><span>Jenis isian</span>
-                    <select class="setting-select" data-setting="type">
-                        ${Object.entries(config.questionTypes).map(([type, label]) => `<option value="${type}" ${type === question.type ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
-                    </select>
-                </label>
-                ${hasCodeBoxes ? `<label class="setting-field"><span>Jumlah kotak kode <small>(0–${config.maxCodeLength})</small></span>
-                    <input class="setting-select" type="number" min="0" max="${config.maxCodeLength}" value="${question.code_length}" data-setting="code_length">
-                </label>` : ''}
-                ${isInfo ? '' : `<label class="required-toggle"><input type="checkbox" data-setting="required" ${question.required ? 'checked' : ''}><span class="toggle-track"></span><span>Wajib diisi</span></label>`}
-                ${question.type === 'region' ? `<div class="type-settings">${regionSettings(question)}</div>` : ''}
-                ${question.type === 'table' ? `<div class="type-settings">${tableSettings(question)}</div>` : ''}
-                <div class="logic-editor" id="logic-editor"></div>
+                <div class="field-head">
+                    <span class="field-type">${escapeHtml(config.questionTypes[question.type])}</span>
+                    <strong>${isInfo ? 'Keterangan' : `Pertanyaan ${numbers.get(question.id)}`}</strong>
+                    <span class="setting-value">BLOK ${toRoman(blockIndex + 1)}</span>
+                </div>
+                <div class="field-tabs" role="tablist">
+                    <button type="button" role="tab" data-field-tab="options" aria-selected="${fieldTab === 'options'}">Opsi</button>
+                    <button type="button" role="tab" data-field-tab="logic" aria-selected="${fieldTab === 'logic'}">Logika${logicCount ? ' <b>•</b>' : ''}</button>
+                    <button type="button" role="tab" data-field-tab="validation" aria-selected="${fieldTab === 'validation'}" ${isInfo ? 'disabled' : ''}>Validasi${validationCount ? ` <b>${validationCount}</b>` : ''}</button>
+                </div>
+                <div class="field-tab-body">${body}</div>
                 <button class="danger-link" type="button" data-setting-action="remove-question">Hapus ${isInfo ? 'keterangan' : 'pertanyaan'}</button>`;
-            renderLogicEditor();
             return;
         }
 
@@ -583,10 +952,11 @@
 
         selectionPanel.innerHTML = `
             <div class="setting-label"><span>Elemen dipilih</span><span class="setting-value">EDIT</span></div>
-            <div class="selected-placeholder"><span class="cursor-icon">↖</span><span>Pilih blok atau pertanyaan di lembar untuk mengatur detailnya.</span></div>`;
+            <div class="selected-placeholder"><span class="cursor-icon">↖</span><span>Pilih blok atau pertanyaan di lembar, atau klik ⚙ pada pertanyaan untuk mengatur opsi, logika, dan validasinya.</span></div>`;
     }
 
     function select(kind, id) {
+        showPane('item');
         if (isSelected(kind, id)) return;
         selected = { kind, id };
         blockList.querySelectorAll('.is-selected').forEach(element => element.classList.remove('is-selected'));
@@ -636,6 +1006,7 @@
         if (context?.questionIndex !== null && context?.questionIndex !== undefined) block.questions.splice(context.questionIndex + 1, 0, question);
         else block.questions.push(question);
         selected = { kind: 'question', id: question.id };
+        fieldTab = 'options';
         render();
         focusField(`[data-question-id="${CSS.escape(question.id)}"] .question-label`);
     }
@@ -671,7 +1042,25 @@
             question.code_length = 0;
             clearConditionsOn([question.id]);
         }
-        if (type === 'info') question.required = false;
+        if (type === 'info') {
+            question.required = false;
+            question.disabled = false;
+        }
+        question.validation.rules = question.validation.rules.filter(rule => config.validationRules[rule.type].types.includes(type));
+    }
+
+    // Toggling a base flag flips its logic action, e.g. a newly hidden field's "hide" becomes "show".
+    function toggleFlag(question, flag) {
+        question[flag] = !question[flag];
+        const pairs = { hidden: ['hide', 'show'], disabled: ['disable', 'enable'], required: ['require', 'optional'] };
+        const [whenOff, whenOn] = pairs[flag];
+        if (question.logic) {
+            question.logic.actions = question.logic.actions.map(action => {
+                if (action === whenOff && question[flag]) return whenOn;
+                if (action === whenOn && !question[flag]) return whenOff;
+                return action;
+            });
+        }
     }
 
     function refreshCodeBoxes(question) {
@@ -696,25 +1085,49 @@
         else if (blockElement) select('block', blockElement.dataset.blockId);
     }
 
+    function openSettings(questionId, tab = 'options') {
+        fieldTab = tab;
+        selected = null;
+        select('question', questionId);
+        document.querySelector('.settings-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
     blockList.addEventListener('click', event => {
         const actionElement = event.target.closest('[data-action]');
         const action = actionElement?.dataset.action;
-        if (action === 'remove-question') return removeQuestion(event.target.closest('.question-row').dataset.questionId);
+        const row = event.target.closest('.question-row');
+        if (action === 'remove-question') return removeQuestion(row.dataset.questionId);
         if (action === 'remove-block') return removeBlock(event.target.closest('.form-block').dataset.blockId);
+        if (action === 'open-settings') return openSettings(row.dataset.questionId);
+        if (action === 'insert-after') {
+            const found = findQuestion(row.dataset.questionId);
+            const question = makeQuestion('short');
+            found.block.questions.splice(found.questionIndex + 1, 0, question);
+            selected = { kind: 'question', id: question.id };
+            fieldTab = 'options';
+            render();
+            focusField(`[data-question-id="${CSS.escape(question.id)}"] .question-label`);
+            return;
+        }
         if (action === 'add-branch') {
-            const parent = findQuestion(event.target.closest('.question-row').dataset.questionId);
-            const followUp = makeQuestion('short', { condition: { question_id: parent.question.id, operator: 'equals', value: actionElement.dataset.option } });
+            const parent = findQuestion(row.dataset.questionId);
+            const followUp = makeQuestion('short', {
+                hidden: true,
+                logic: { conditions: { operator: 'and', rules: [{ question_id: parent.question.id, operator: 'equals', value: actionElement.dataset.option }] }, actions: ['show'] },
+            });
             // Keep follow-ups grouped directly under their parent question.
+            const followsParent = question => question?.logic?.conditions.rules.some(rule => rule.question_id === parent.question.id);
             let insertAt = parent.questionIndex + 1;
-            while (parent.block.questions[insertAt]?.condition?.question_id === parent.question.id) insertAt++;
+            while (followsParent(parent.block.questions[insertAt])) insertAt++;
             parent.block.questions.splice(insertAt, 0, followUp);
             selected = { kind: 'question', id: followUp.id };
+            fieldTab = 'options';
             render();
             focusField(`[data-question-id="${CSS.escape(followUp.id)}"] .question-label`);
             return;
         }
         if (action === 'code-more' || action === 'code-less') {
-            const question = findQuestion(event.target.closest('.question-row').dataset.questionId).question;
+            const question = findQuestion(row.dataset.questionId).question;
             question.code_length = clamp(question.code_length + (action === 'code-more' ? 1 : -1), 0, config.maxCodeLength, 0);
             select('question', question.id);
             refreshCodeBoxes(question);
@@ -764,98 +1177,286 @@
         const row = event.target.closest('.question-row');
         const found = row && findQuestion(row.dataset.questionId);
         if (!found) return;
-        if (field === 'label') found.question.label = event.target.value;
-        if (field === 'description') found.question.description = event.target.value;
+        const panelField = name => (isSelected('question', found.question.id) ? selectionPanel.querySelector(`[data-option="${name}"]`) : null);
+        if (field === 'label') {
+            found.question.label = event.target.value;
+            const mirror = panelField('label');
+            if (mirror) mirror.value = event.target.value;
+        }
+        if (field === 'description') {
+            found.question.description = event.target.value;
+            const mirror = panelField('description');
+            if (mirror) mirror.value = event.target.value;
+        }
         if (field === 'options') {
             found.question.options = event.target.value.split('\n').map(option => option.trim()).filter(Boolean);
             refreshPreview(found.question);
         }
     });
 
-    selectionPanel.addEventListener('input', event => {
-        if (event.target.dataset.logicField === 'value') return updateCondition('value', event.target.value);
-        const found = selected?.kind === 'question' && findQuestion(selected.id);
-        if (!found) return;
-        const { question } = found;
+    // ── Settings panel events ──────────────────────────────────────────────
 
-        const regionField = event.target.dataset.regionField;
-        if ((regionField === 'code' || regionField === 'name') && event.target.tagName === 'INPUT') {
-            const field = question.region.fields.find(item => item.key === event.target.closest('[data-region-key]').dataset.regionKey);
-            field[regionField] = event.target.value;
-            refreshPreview(question);
+    function selectedQuestion() {
+        return selected?.kind === 'question' ? findQuestion(selected.id)?.question ?? null : null;
+    }
+
+    function afterPanelChange(question, { rerender = false, preview = false } = {}) {
+        if (preview) refreshPreview(question);
+        refreshAllBadges();
+        if (rerender) renderSelectionPanel();
+    }
+
+    selectionPanel.addEventListener('input', event => {
+        const target = event.target;
+        if (target.dataset.logicField === 'value') return updateCondition('value', target.value);
+        const question = selectedQuestion();
+        if (!question) return;
+
+        // Options tab: typed fields update the model without re-rendering, so focus stays put.
+        const option = target.dataset.option;
+        if (option && target.matches('input[type="text"], input[type="number"], input[type="date"], textarea')) {
+            if (option === 'max_length') question.max_length = target.value ? clamp(target.value, 1, 5000, null) : null;
+            else question[option] = target.value;
+            if (option === 'label' || option === 'description') {
+                const mirror = blockList.querySelector(`[data-question-id="${CSS.escape(question.id)}"] [data-field="${option}"]`);
+                if (mirror) mirror.value = target.value;
+            }
+            return afterPanelChange(question, { preview: ['prefill', 'placeholder'].includes(option) });
+        }
+
+        if (target.dataset.ruleField === 'value' && target.tagName === 'INPUT') {
+            const row = target.closest('[data-path]');
+            nodeAt(scopeRoot(question, row.dataset.scope), parsePath(row.dataset.path)).value = target.value;
+            return afterPanelChange(question);
+        }
+        if (target.dataset.checkField === 'message') {
+            question.validation.checks[Number(target.closest('[data-check-index]').dataset.checkIndex)].message = target.value;
+            return afterPanelChange(question);
+        }
+        if (target.dataset.vruleField === 'value') {
+            question.validation.rules[Number(target.closest('[data-rule-index]').dataset.ruleIndex)].value = target.value;
+            return afterPanelChange(question);
+        }
+        if (target.dataset.vruleField === 'message') {
+            question.validation.message = target.value;
             return;
         }
 
-        if (event.target.dataset.setting === 'code_length') {
-            question.code_length = clamp(event.target.value, 0, config.maxCodeLength, 0);
+        const regionField = target.dataset.regionField;
+        if ((regionField === 'code' || regionField === 'name') && target.tagName === 'INPUT') {
+            const field = question.region.fields.find(item => item.key === target.closest('[data-region-key]').dataset.regionKey);
+            field[regionField] = target.value;
+            refreshPreview(question);
+            return;
+        }
+        if (target.dataset.setting === 'code_length') {
+            question.code_length = clamp(target.value, 0, config.maxCodeLength, 0);
             refreshCodeBoxes(question);
         }
-        if (event.target.dataset.setting === 'initial_rows') {
-            question.table.initial_rows = clamp(event.target.value, 1, question.table.max_rows, 1);
+        if (target.dataset.setting === 'initial_rows') {
+            question.table.initial_rows = clamp(target.value, 1, question.table.max_rows, 1);
             refreshPreview(question);
         }
-        if (event.target.dataset.setting === 'max_rows') {
-            question.table.max_rows = clamp(event.target.value, 1, config.maxTableRows, 20);
+        if (target.dataset.setting === 'max_rows') {
+            question.table.max_rows = clamp(target.value, 1, config.maxTableRows, 20);
             question.table.initial_rows = Math.min(question.table.initial_rows, question.table.max_rows);
             refreshPreview(question);
         }
     });
 
     selectionPanel.addEventListener('change', event => {
-        if (event.target.dataset.logicField) return updateCondition(event.target.dataset.logicField, event.target.value);
-        const setting = event.target.dataset.setting;
+        const target = event.target;
+        if (target.dataset.logicField) return updateCondition(target.dataset.logicField, target.value);
+        const setting = target.dataset.setting;
 
         if (setting === 'add-question') {
             const found = selected?.kind === 'block' && findBlock(selected.id);
-            if (found && event.target.value) addQuestion(event.target.value, found.block);
+            if (found && target.value) addQuestion(target.value, found.block);
             return;
         }
         if (setting === 'layout') {
             const found = selected?.kind === 'block' && findBlock(selected.id);
-            if (found) found.block.layout = event.target.value;
+            if (found) found.block.layout = target.value;
             render();
             return;
         }
 
-        const found = selected?.kind === 'question' && findQuestion(selected.id);
-        if (!found) return;
-        const { question } = found;
+        const question = selectedQuestion();
+        if (!question) return;
 
-        const regionField = event.target.dataset.regionField;
-        if (regionField === 'enabled' || regionField === 'mode' || (regionField === 'name' && event.target.tagName === 'SELECT')) {
-            const field = question.region.fields.find(item => item.key === event.target.closest('[data-region-key]').dataset.regionKey);
-            field[regionField] = regionField === 'enabled' ? event.target.checked : event.target.value;
+        // Options tab: choices that change what the panel shows.
+        const option = target.dataset.option;
+        if (option === 'hide_label') {
+            question.hide_label = target.checked;
+            return afterPanelChange(question);
+        }
+        if (option === 'width' || option === 'help_position' || (option === 'prefill' && target.tagName === 'SELECT')) {
+            question[option] = target.value;
+            return afterPanelChange(question, { preview: true });
+        }
+        if (option === 'max_length') {
+            target.value = question.max_length ?? '';
+            return;
+        }
+
+        // Logic tab.
+        const tool = target.dataset.logicTool;
+        if (tool === 'copy-from' && target.value) {
+            const source = findQuestion(target.value)?.question;
+            if (source?.logic) {
+                question.logic = structuredClone(source.logic);
+                question.logic.actions = question.logic.actions.filter(action => allowedActions(question).includes(action));
+                if (!question.logic.actions.length) question.logic.actions = [allowedActions(question)[0]];
+            }
+            return afterPanelChange(question, { rerender: true });
+        }
+        if (tool === 'copy-to' && target.value) {
+            const destination = findQuestion(target.value)?.question;
+            if (destination && question.logic) {
+                destination.logic = structuredClone(question.logic);
+                destination.logic.actions = destination.logic.actions.filter(action => allowedActions(destination).includes(action));
+                if (!destination.logic.actions.length) destination.logic.actions = [allowedActions(destination)[0]];
+                showNotice(`Logika disalin ke pertanyaan ${numbers.get(destination.id) ?? ''}.`, 'toast-info');
+            }
+            return afterPanelChange(question, { rerender: true });
+        }
+        if (target.dataset.logicAction) {
+            const actions = new Set(question.logic.actions);
+            if (target.checked) actions.add(target.dataset.logicAction);
+            else actions.delete(target.dataset.logicAction);
+            question.logic.actions = [...actions];
+            return afterPanelChange(question);
+        }
+        if (target.dataset.groupField === 'operator') {
+            const group = target.closest('[data-path]');
+            nodeAt(scopeRoot(question, group.dataset.scope), parsePath(group.dataset.path)).operator = target.value;
+            return afterPanelChange(question);
+        }
+        const ruleField = target.dataset.ruleField;
+        if (ruleField) {
+            const row = target.closest('[data-path]');
+            const rule = nodeAt(scopeRoot(question, row.dataset.scope), parsePath(row.dataset.path));
+            rule[ruleField] = target.value;
+            if (ruleField === 'question_id') {
+                const source = findQuestion(target.value)?.question;
+                rule.value = source && choiceTypes.includes(source.type) ? source.options[0] ?? '' : '';
+            }
+            return afterPanelChange(question, { rerender: ruleField !== 'value' });
+        }
+
+        // Validation tab.
+        if (target.dataset.checkField === 'level') {
+            question.validation.checks[Number(target.closest('[data-check-index]').dataset.checkIndex)].level = target.value;
+            return afterPanelChange(question, { rerender: true });
+        }
+        if (target.dataset.vruleField === 'type') {
+            question.validation.rules[Number(target.closest('[data-rule-index]').dataset.ruleIndex)] = { type: target.value, value: '' };
+            return afterPanelChange(question, { rerender: true });
+        }
+
+        const regionField = target.dataset.regionField;
+        if (regionField === 'enabled' || regionField === 'mode' || (regionField === 'name' && target.tagName === 'SELECT')) {
+            const field = question.region.fields.find(item => item.key === target.closest('[data-region-key]').dataset.regionKey);
+            field[regionField] = regionField === 'enabled' ? target.checked : target.value;
             refreshPreview(question);
             renderSelectionPanel();
             return;
         }
 
-        if (setting === 'code_length') event.target.value = question.code_length;
+        if (setting === 'code_length') target.value = question.code_length;
         if (setting === 'max_rows') {
-            event.target.value = question.table.max_rows;
+            target.value = question.table.max_rows;
             renderSelectionPanel();
         }
-        if (setting === 'initial_rows') event.target.value = question.table.initial_rows;
-        if (setting === 'required') {
-            question.required = event.target.checked;
-            blockList.querySelector(`[data-question-id="${CSS.escape(question.id)}"]`)?.classList.toggle('is-required', event.target.checked);
-        }
+        if (setting === 'initial_rows') target.value = question.table.initial_rows;
         if (setting === 'type') {
-            changeType(question, event.target.value);
+            changeType(question, target.value);
             render();
         }
         if (setting === 'table-mode') {
-            question.table.mode = event.target.value;
+            question.table.mode = target.value;
             if (question.table.mode === 'fixed' && !question.table.rows.length) question.table.rows = ['Baris 1', 'Baris 2'];
             render();
         }
     });
 
     selectionPanel.addEventListener('click', event => {
-        const action = event.target.closest('[data-setting-action]')?.dataset.settingAction;
-        if (action === 'remove-question' && selected) removeQuestion(selected.id);
-        if (action === 'remove-block' && selected) removeBlock(selected.id);
+        const settingAction = event.target.closest('[data-setting-action]')?.dataset.settingAction;
+        if (settingAction === 'remove-question' && selected) return removeQuestion(selected.id);
+        if (settingAction === 'remove-block' && selected) return removeBlock(selected.id);
+
+        const tab = event.target.closest('[data-field-tab]')?.dataset.fieldTab;
+        if (tab) {
+            fieldTab = tab;
+            return renderSelectionPanel();
+        }
+
+        const question = selectedQuestion();
+        if (!question) return;
+
+        const flag = event.target.closest('[data-flag]')?.dataset.flag;
+        if (flag) {
+            toggleFlag(question, flag);
+            return render();
+        }
+
+        const tool = event.target.closest('button[data-logic-tool]')?.dataset.logicTool;
+        if (tool === 'start') {
+            question.logic = { conditions: { operator: 'and', rules: [newRule(earlierQuestions('question', question.id))] }, actions: [allowedActions(question)[0]] };
+            return afterPanelChange(question, { rerender: true });
+        }
+        if (tool === 'clear') {
+            question.logic = null;
+            return afterPanelChange(question, { rerender: true });
+        }
+
+        const groupAction = event.target.closest('[data-group-action]');
+        if (groupAction) {
+            const node = groupAction.closest('[data-path]');
+            const scope = node.dataset.scope;
+            const root = scopeRoot(question, scope);
+            const path = parsePath(node.dataset.path);
+            const available = scopeAvailable(question, scope);
+            const action = groupAction.dataset.groupAction;
+            if (action === 'add-rule') nodeAt(root, path).rules.push(newRule(available));
+            if (action === 'add-group') nodeAt(root, path).rules.push({ operator: 'and', rules: [newRule(available)] });
+            if (action === 'remove-rule' || action === 'remove-group') {
+                nodeAt(root, path.slice(0, -1)).rules.splice(path.at(-1), 1);
+                if (scope === 'logic' && !root.rules.length) question.logic = null;
+            }
+            return afterPanelChange(question, { rerender: true });
+        }
+
+        const checkAction = event.target.closest('[data-check-action]');
+        if (checkAction?.dataset.checkAction === 'add') {
+            const available = earlierQuestions('question', question.id, true);
+            const self = available.find(item => item.question.id === question.id) ?? available[0];
+            question.validation.checks.push({
+                id: makeId('k'),
+                level: 'warning',
+                conditions: { operator: 'and', rules: [newRule(self ? [self] : [])] },
+                message: '',
+            });
+            return afterPanelChange(question, { rerender: true });
+        }
+        if (checkAction?.dataset.checkAction === 'remove') {
+            question.validation.checks.splice(Number(checkAction.closest('[data-check-index]').dataset.checkIndex), 1);
+            return afterPanelChange(question, { rerender: true });
+        }
+
+        const vruleAction = event.target.closest('[data-vrule-action]');
+        if (vruleAction?.dataset.vruleAction === 'add') {
+            const [firstType] = Object.entries(config.validationRules).find(([, rule]) => rule.types.includes(question.type)) ?? [];
+            if (firstType) question.validation.rules.push({ type: firstType, value: '' });
+            return afterPanelChange(question, { rerender: true });
+        }
+        if (vruleAction?.dataset.vruleAction === 'remove') {
+            question.validation.rules.splice(Number(vruleAction.closest('[data-rule-index]').dataset.ruleIndex), 1);
+            return afterPanelChange(question, { rerender: true });
+        }
     });
+
+    document.querySelectorAll('[data-panel-tab]').forEach(tab => tab.addEventListener('click', () => showPane(tab.dataset.panelTab)));
 
     // ── Drag and drop ──────────────────────────────────────────────────────
     // Blocks, questions and table columns only become draggable while their ⠿ handle is held,
@@ -1078,10 +1679,10 @@
 
     // ── Submission ─────────────────────────────────────────────────────────
 
-    function showNotice(message) {
+    function showNotice(message, className = 'toast-error') {
         document.querySelectorAll('.toast').forEach(toast => toast.remove());
         const toast = document.createElement('div');
-        toast.className = 'toast toast-error';
+        toast.className = `toast ${className}`;
         toast.setAttribute('role', 'alert');
         toast.textContent = message;
         document.body.append(toast);
@@ -1096,7 +1697,7 @@
             if (question.table.columns.some(column => column.type === 'choice' && !column.options.length)) return 'Kolom pilihan pada tabel belum memiliki opsi.';
             if (question.table.mode === 'fixed' && !question.table.rows.some(row => row.trim())) return 'Tabel baris tetap membutuhkan nama baris.';
         }
-        return conditionProblem('question', question.id);
+        return logicProblem(question) || validationProblemOf(question);
     }
 
     function findProblem() {

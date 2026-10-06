@@ -203,8 +203,15 @@
             </section>
 
             <aside class="settings-panel">
+                <div class="panel-tabs" role="tablist" aria-label="Panel pengaturan">
+                    <button type="button" role="tab" data-panel-tab="item" aria-selected="true">Isian dipilih</button>
+                    <button type="button" role="tab" data-panel-tab="form" aria-selected="false">Properti formulir</button>
+                </div>
+                <div data-panel-pane="item">
+                    <div class="setting-block selected-setting" id="selection-panel"></div>
+                </div>
+                <div data-panel-pane="form" hidden>
                 <div class="settings-title"><span class="eyebrow">PENGATURAN</span><h2>Properti formulir</h2></div>
-                <div class="setting-block selected-setting" id="selection-panel"></div>
                 <div class="setting-block">
                     <div class="setting-label"><span>Penomoran pertanyaan</span><span class="setting-value">NOMOR</span></div>
                     <div class="segmented">
@@ -261,6 +268,7 @@
                     </div>
                     <label class="sr-only" for="period-value">Nilai periode</label>
                     <select class="setting-select" id="period-value" name="settings[period_value]" data-selected="{{ old('settings.period_value', $settings['period_value'] ?? 1) }}"></select>
+                </div>
                 </div>
             </aside>
 

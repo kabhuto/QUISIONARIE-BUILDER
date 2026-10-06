@@ -265,7 +265,7 @@ class SurveyLifecycleTest extends TestCase
 
         $this->get(route('form.create', $survey))
             ->assertOk()
-            ->assertSee('fill-question cawi-question is-short is-branch', false);
+            ->assertSee('fill-question cawi-question is-short w-full is-branch', false);
 
         // "Perkotaan" reveals the follow-up, which is then required.
         $this->post(route('form.store', $survey), ['answers' => ['q-nama' => 'Budi', 'q-klas' => 'Perkotaan']])

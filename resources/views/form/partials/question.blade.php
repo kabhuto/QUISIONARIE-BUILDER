@@ -3,25 +3,42 @@
     $number = $numbers[$question['id']] ?? null;
     $name = 'answers['.$question['id'].']';
     $inputId = 'answer-'.$question['id'];
-    $old = old('answers.'.$question['id']);
+    $prefill = ($question['prefill'] ?? '') !== '' ? $question['prefill'] : null;
+    // Old input wins after a failed submission; otherwise start from the pre-filled value.
+    $old = old('answers.'.$question['id'], $errors->any() ? null : $prefill);
     $errorKey = 'answers.'.$question['id'];
     $error = $errors->first($errorKey) ?: $errors->first($errorKey.'.*') ?: $errors->first($errorKey.'.*.*');
-    $conditionAttribute = ! empty($question['condition']) ? json_encode($question['condition']) : null;
-    $required = $question['required'] ? '<span class="fill-required" aria-label="wajib diisi">*</span>' : '';
+    $logic = $question['logic'] ?? null;
+    $hasRules = ($question['validation']['rules'] ?? []) !== [] || ($question['validation']['checks'] ?? []) !== [];
+    $placeholder = $question['placeholder'] ?? '';
+    $maxLength = $question['max_length'] ?? null;
+    $width = 'w-'.str_replace('/', '-', $question['width'] ?? 'full');
+    $help = ($question['description'] ?? '') !== '' ? '<p class="fill-hint">'.e($question['description']).'</p>' : '';
+    $helpAbove = ($question['help_position'] ?? 'below') === 'above';
+    $isBranch = $question['hidden'] && in_array('show', $logic['actions'] ?? [], true);
+    // Shown or hidden by JavaScript from the field logic; the asterisk follows [data-required].
+    $required = '<span class="fill-required" aria-hidden="true">*</span>';
+    $labelClass = ($question['hide_label'] ?? false) ? 'sr-only' : null;
 @endphp
 
 @if ($type === 'info')
-    <div class="fill-question cawi-info" data-question-id="{{ $question['id'] }}" data-type="info" @if ($conditionAttribute) data-condition="{{ $conditionAttribute }}" @endif>
+    <div @class(['fill-question', 'cawi-info', $width]) data-question-id="{{ $question['id'] }}" data-type="info"
+         @if ($question['hidden']) data-static-hidden hidden @endif
+         @if ($logic) data-logic="{{ json_encode($logic) }}" @endif>
         <strong>ⓘ {{ $question['label'] }}</strong>
         @if ($question['description'] !== '')
             <p>{!! nl2br(e($question['description'])) !!}</p>
         @endif
     </div>
 @else
-    <div @class(['fill-question', 'cawi-question', 'is-'.$type, 'is-branch' => ! empty($question['condition']), 'has-error' => $error])
+    <div @class(['fill-question', 'cawi-question', 'is-'.$type, $width, 'is-narrow' => $width !== 'w-full', 'is-branch' => $isBranch, 'is-disabled' => $question['disabled'], 'has-error' => $error])
          data-question-id="{{ $question['id'] }}" data-type="{{ $type }}"
-         @if ($question['required']) data-required @endif
-         @if ($conditionAttribute) data-condition="{{ $conditionAttribute }}" @endif>
+         @if ($question['required']) data-required data-static-required @endif
+         @if ($question['hidden']) data-static-hidden hidden @endif
+         @if ($question['disabled']) data-static-disabled @endif
+         @if ($logic) data-logic="{{ json_encode($logic) }}" @endif
+         @if ($hasRules) data-validation="{{ json_encode($question['validation']) }}" @endif
+         @if ($maxLength) data-max-length="{{ $maxLength }}" @endif>
 
         @if ($type === 'region')
             @php
@@ -62,10 +79,8 @@
                 $rowCount = $isFixed ? count($table['rows']) : min($table['max_rows'], max($table['initial_rows'] ?? 3, count($oldRows)));
             @endphp
             <div class="cawi-q cawi-q-wide">
-                <span class="fill-label"><span class="cawi-number">{{ $number }}.</span> {{ $question['label'] }}{!! $required !!}</span>
-                @if ($question['description'] !== '')
-                    <p class="fill-hint">{{ $question['description'] }}</p>
-                @endif
+                <span @class(['fill-label', $labelClass])><span class="cawi-number">{{ $number }}.</span> {{ $question['label'] }}{!! $required !!}</span>
+                {!! $help !!}
             </div>
             <div class="cawi-table-wrap">
                 <table class="cawi-table" data-table="{{ $question['id'] }}" data-mode="{{ $table['mode'] }}" data-max-rows="{{ $table['max_rows'] }}">
@@ -108,32 +123,32 @@
         @else
             <div class="cawi-row">
                 <div class="cawi-q">
-                    <label class="fill-label" @unless (in_array($type, ['single', 'multiple', 'code'], true)) for="{{ $inputId }}" @endunless id="{{ $inputId }}-label">
+                    <label @class(['fill-label', $labelClass]) @unless (in_array($type, ['single', 'multiple', 'code'], true)) for="{{ $inputId }}" @endunless id="{{ $inputId }}-label">
                         <span class="cawi-number">{{ $number }}.</span> {{ $question['label'] }}{!! $required !!}
                     </label>
-                    @if ($question['description'] !== '')
-                        <p class="fill-hint">{{ $question['description'] }}</p>
-                    @endif
                 </div>
                 <div class="cawi-a">
+                    @if ($helpAbove)
+                        {!! $help !!}
+                    @endif
                     @switch($type)
                         @case('long')
-                            <textarea class="fill-input" id="{{ $inputId }}" name="{{ $name }}" rows="3" maxlength="5000">{{ $old }}</textarea>
+                            <textarea class="fill-input" id="{{ $inputId }}" name="{{ $name }}" rows="3" maxlength="{{ $maxLength ?: 5000 }}" placeholder="{{ $placeholder }}">{{ $old }}</textarea>
                             @break
                         @case('number')
-                            <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="number" step="any" inputmode="decimal" value="{{ $old }}">
+                            <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="number" step="any" inputmode="decimal" value="{{ $old }}" placeholder="{{ $placeholder }}">
                             @break
                         @case('currency')
-                            <div class="cawi-money"><span>Rp</span><input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="text" inputmode="numeric" autocomplete="off" value="{{ $old }}" data-currency></div>
+                            <div class="cawi-money"><span>Rp</span><input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="text" inputmode="numeric" autocomplete="off" value="{{ $old }}" placeholder="{{ $placeholder }}" data-currency></div>
                             @break
                         @case('date')
                             <input class="fill-input cawi-short" id="{{ $inputId }}" name="{{ $name }}" type="date" value="{{ $old }}">
                             @break
                         @case('email')
-                            <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="email" maxlength="160" autocomplete="email" value="{{ $old }}">
+                            <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="email" maxlength="160" autocomplete="email" value="{{ $old }}" placeholder="{{ $placeholder }}">
                             @break
                         @case('phone')
-                            <input class="fill-input cawi-short" id="{{ $inputId }}" name="{{ $name }}" type="tel" maxlength="20" autocomplete="tel" value="{{ $old }}">
+                            <input class="fill-input cawi-short" id="{{ $inputId }}" name="{{ $name }}" type="tel" maxlength="20" autocomplete="tel" value="{{ $old }}" placeholder="{{ $placeholder }}">
                             @break
                         @case('code')
                             @if ($question['code_length'] > 0)
@@ -149,7 +164,7 @@
                             @break
                         @case('single')
                         @case('multiple')
-                            <div @class(['cawi-options', 'is-columns' => count($question['options']) > 4]) role="{{ $type === 'single' ? 'radiogroup' : 'group' }}" aria-labelledby="{{ $inputId }}-label">
+                            <div @class(['cawi-options', 'is-columns' => count($question['options']) > 4 && $width === 'w-full']) role="{{ $type === 'single' ? 'radiogroup' : 'group' }}" aria-labelledby="{{ $inputId }}-label">
                                 @foreach ($question['options'] as $optionIndex => $option)
                                     <label @class(['cawi-option', 'is-multiple' => $type === 'multiple'])>
                                         @if ($type === 'single')
@@ -164,19 +179,35 @@
                             @break
                         @case('dropdown')
                             <select class="fill-input" id="{{ $inputId }}" name="{{ $name }}">
-                                <option value="">Pilih jawaban…</option>
+                                <option value="">{{ $placeholder ?: 'Pilih jawaban…' }}</option>
                                 @foreach ($question['options'] as $option)
                                     <option value="{{ $option }}" @selected($old === $option)>{{ $option }}</option>
                                 @endforeach
                             </select>
                             @break
                         @default
-                            <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="text" maxlength="255" value="{{ $old }}">
+                            <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="text" maxlength="{{ $maxLength ?: 255 }}" value="{{ $old }}" placeholder="{{ $placeholder }}">
                     @endswitch
+                    @unless ($helpAbove)
+                        {!! $help !!}
+                    @endunless
+                    @if ($maxLength)
+                        <p class="fill-counter" data-counter></p>
+                    @endif
                 </div>
             </div>
         @endif
 
         <p class="fill-error" data-error>{{ $error }}</p>
+
+        {{-- Consistency checks, shown by JavaScript as soon as their conditions hold. --}}
+        @foreach ($question['validation']['checks'] ?? [] as $check)
+            <div class="cawi-check is-{{ $check['level'] }}" data-check-id="{{ $check['id'] }}" role="alert" hidden>
+                <p><b>{{ $check['level'] === 'warning' ? 'Peringatan' : 'Galat' }}:</b> {{ $check['message'] }}</p>
+                @if ($check['level'] === 'warning')
+                    <label><input type="checkbox" name="confirmations[{{ $check['id'] }}]" value="1" @checked(old('confirmations.'.$check['id']))> Ya, jawaban ini sudah benar</label>
+                @endif
+            </div>
+        @endforeach
     </div>
 @endif

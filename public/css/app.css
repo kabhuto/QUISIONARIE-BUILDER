@@ -112,3 +112,4 @@
 .validation-error{font-size:11px;color:#8e2a1f;margin-bottom:4px}.validation-error .mono-chip{margin-right:4px}
 .validation-warning{font-size:10px;color:#a2642a;margin-top:4px}
 @media(max-width:760px){.validation-form{grid-template-columns:1fr}.validation-stats{display:flex}}
+.flag-summary{margin:0 0 14px;padding:12px 14px;border:1px solid #f0d49a;border-left:4px solid #d99a2b;border-radius:4px;background:#fffbf0;color:#6b5320;font-size:12px}.flag-summary p{margin:4px 0 0;font-size:11px}.detail-flag{grid-column:1/-1;margin:2px 0 0;padding:5px 8px;border-radius:3px;background:#fff6e2;color:#8a5d10;font-size:11px}.flag-dot{display:inline-block;margin-left:4px;color:#d99a2b;font-weight:700}

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Survey;
+use App\Support\FieldValidation;
 use App\Support\SurveyLogic;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -11,9 +12,16 @@ use Illuminate\Validation\Validator;
 class SubmitSurveyResponseRequest extends FormRequest
 {
     /**
-     * @var array<string, true>|null
+     * @var array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>}|null
      */
-    private ?array $visibleQuestionIds = null;
+    private ?array $analysis = null;
+
+    /**
+     * Consistency warnings the respondent confirmed, stored with the response.
+     *
+     * @var list<array<string, string>>
+     */
+    private array $confirmedWarnings = [];
 
     /**
      * Determine if the user is authorized to make this request.
@@ -45,27 +53,42 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
-     * Questions hidden by the form's logic are neither validated nor stored.
+     * Hidden, disabled and required state of every question after applying the form's logic.
      *
-     * @return array<string, true>
+     * @return array<string, array{hidden: bool, disabled: bool, required: bool}>
      */
-    private function visibleQuestionIds(): array
+    private function states(): array
     {
-        return $this->visibleQuestionIds ??= array_fill_keys(
-            SurveyLogic::visibleQuestionIds($this->survey()->blocks, (array) $this->input('answers', [])),
-            true,
-        );
+        return $this->analysis()['states'];
     }
 
     /**
+     * @return array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>}
+     */
+    private function analysis(): array
+    {
+        return $this->analysis ??= SurveyLogic::analyse($this->survey()->blocks, (array) $this->input('answers', []));
+    }
+
+    /**
+     * Questions the respondent can see and change; only these are validated and taken from the request.
+     *
      * @return list<array<string, mixed>>
      */
-    private function visibleQuestions(): array
+    private function editableQuestions(): array
     {
         return array_values(array_filter(
             $this->survey()->questions(),
-            fn (array $question): bool => isset($this->visibleQuestionIds()[$question['id']]),
+            fn (array $question): bool => ! ($this->states()[$question['id']]['hidden'] ?? true) && ! $this->states()[$question['id']]['disabled'],
         ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $question
+     */
+    private function isRequired(array $question): bool
+    {
+        return $this->states()[$question['id']]['required'] ?? false;
     }
 
     /**
@@ -77,9 +100,9 @@ class SubmitSurveyResponseRequest extends FormRequest
     {
         $rules = ['answers' => ['nullable', 'array']];
 
-        foreach ($this->visibleQuestions() as $question) {
+        foreach ($this->editableQuestions() as $question) {
             $key = 'answers.'.$question['id'];
-            $presence = $question['required'] ? 'required' : 'nullable';
+            $presence = $this->isRequired($question) ? 'required' : 'nullable';
 
             if ($question['type'] === 'region') {
                 $rules[$key] = ['nullable', 'array'];
@@ -113,8 +136,10 @@ class SubmitSurveyResponseRequest extends FormRequest
                 continue;
             }
 
+            $maxLength = fn (int $limit): string => 'max:'.min($limit, $question['max_length'] ?: $limit);
+
             $rules[$key] = match ($question['type']) {
-                'long' => [$presence, 'string', 'max:5000'],
+                'long' => [$presence, 'string', $maxLength(5000)],
                 'number' => [$presence, 'numeric'],
                 'currency' => [$presence, 'digits_between:1,18'],
                 'date' => [$presence, 'date'],
@@ -124,8 +149,8 @@ class SubmitSurveyResponseRequest extends FormRequest
                     ? [$presence, 'digits:'.$question['code_length']]
                     : [$presence, 'string', 'max:50'],
                 'single', 'dropdown' => [$presence, 'string', Rule::in($question['options'])],
-                'multiple' => [$presence, 'array', ...($question['required'] ? ['min:1'] : [])],
-                default => [$presence, 'string', 'max:255'],
+                'multiple' => [$presence, 'array', ...($this->isRequired($question) ? ['min:1'] : [])],
+                default => [$presence, 'string', $maxLength(255)],
             };
 
             if ($question['type'] === 'multiple') {
@@ -137,7 +162,7 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
-     * A required table needs at least one filled cell.
+     * Required tables need a filled cell; the builder's "Validasi" rules run once the basics pass.
      *
      * @return array<int, callable>
      */
@@ -145,13 +170,60 @@ class SubmitSurveyResponseRequest extends FormRequest
     {
         return [
             function (Validator $validator) {
-                foreach ($this->visibleQuestions() as $question) {
-                    if ($question['type'] === 'table' && $question['required'] && $this->tableRows($question) === []) {
-                        $validator->errors()->add('answers.'.$question['id'], $question['label'].' wajib diisi minimal satu baris.');
+                foreach ($this->editableQuestions() as $question) {
+                    $key = 'answers.'.$question['id'];
+
+                    if ($question['type'] === 'table' && $this->isRequired($question) && $this->tableRows($question) === []) {
+                        $validator->errors()->add($key, $question['label'].' wajib diisi minimal satu baris.');
                     }
+
+                    if ($validator->errors()->has($key) || $validator->errors()->has($key.'.*')) {
+                        continue;
+                    }
+
+                    if ($message = FieldValidation::failure($question, $this->input($key))) {
+                        $validator->errors()->add($key, $message);
+
+                        continue;
+                    }
+
+                    $this->checkConsistency($validator, $question);
                 }
             },
         ];
+    }
+
+    /**
+     * Consistency checks (e.g. a man who is pregnant): errors must be fixed, warnings must be confirmed.
+     *
+     * @param  array<string, mixed>  $question
+     */
+    private function checkConsistency(Validator $validator, array $question): void
+    {
+        $confirmations = (array) $this->input('confirmations', []);
+
+        foreach (FieldValidation::failedChecks($question, $this->analysis()['known']) as $check) {
+            if ($check['level'] === 'warning' && ! empty($confirmations[$check['id']])) {
+                $this->confirmedWarnings[] = ['question_id' => $question['id'], 'check_id' => $check['id'], 'message' => $check['message']];
+
+                continue;
+            }
+
+            $validator->errors()->add(
+                'answers.'.$question['id'],
+                $check['level'] === 'warning' ? 'Peringatan: '.$check['message'] : $check['message'],
+            );
+        }
+    }
+
+    /**
+     * Warnings the respondent confirmed, to keep with the response for later review.
+     *
+     * @return array{confirmed_warnings: list<array<string, string>>}|null
+     */
+    public function flags(): ?array
+    {
+        return $this->confirmedWarnings === [] ? null : ['confirmed_warnings' => $this->confirmedWarnings];
     }
 
     /**
@@ -196,23 +268,33 @@ class SubmitSurveyResponseRequest extends FormRequest
             'email' => ':attribute harus berupa alamat email yang valid.',
             'regex' => ':attribute harus berupa nomor telepon yang valid.',
             'in' => 'Pilihan untuk :attribute tidak valid.',
-            'max' => ':attribute terlalu panjang.',
+            'max' => ':attribute terlalu panjang (maksimal :max karakter).',
             'string' => ':attribute tidak valid.',
             'array' => ':attribute tidak valid.',
         ];
     }
 
     /**
-     * The visible, non-empty answers keyed by question id.
+     * The answers to store, keyed by question id: what the respondent filled in for editable questions,
+     * and the pre-filled value for disabled or hidden ones.
      *
      * @return array<string, mixed>
      */
     public function answers(): array
     {
         $submitted = (array) $this->input('answers', []);
+        $editable = array_column($this->editableQuestions(), 'id', 'id');
         $answers = [];
 
-        foreach ($this->visibleQuestions() as $question) {
+        foreach ($this->survey()->questions() as $question) {
+            if (! isset($editable[$question['id']])) {
+                if (($question['prefill'] ?? '') !== '' && ! in_array($question['type'], ['region', 'table', 'multiple'], true)) {
+                    $answers[$question['id']] = $question['prefill'];
+                }
+
+                continue;
+            }
+
             $answer = match ($question['type']) {
                 'region' => $this->regionAnswer($question, (array) ($submitted[$question['id']] ?? [])),
                 'table' => $this->tableRows($question),

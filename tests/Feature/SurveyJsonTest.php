@@ -79,7 +79,7 @@ class SurveyJsonTest extends TestCase
         $this->assertSame('q-nama', $json['survey']['blocks'][0]['questions'][0]['id']);
         $this->assertCount(6, $json['validation_rules']);
         $this->assertSame(['wajib diisi', 'salah satu dari: Laki-laki | Perempuan'], $json['validation_rules'][1]['rules']);
-        $this->assertSame('104 sama dengan Ya', $json['validation_rules'][4]['shown_if']);
+        $this->assertSame('Jika 104 sama dengan Ya maka tampilkan', $json['validation_rules'][4]['logic']);
         $this->assertSame('tepat 3 digit angka', $json['validation_rules'][5]['rules'][1]);
         $this->assertCount(2, $json['responses']);
         $this->assertSame('Budi', $json['responses'][0]['answers']['q-nama']);
@@ -100,7 +100,7 @@ class SurveyJsonTest extends TestCase
         $this->assertSame(0, $copy->responses()->count());
         $this->assertSame('Survei Kepuasan', $copy->title);
         $this->assertSame(array_column($survey->questions(), 'id'), array_column($copy->questions(), 'id'));
-        $this->assertSame($survey->blocks[0]['questions'][4]['condition'], $copy->blocks[0]['questions'][4]['condition']);
+        $this->assertSame($survey->blocks[0]['questions'][4]['logic'], $copy->blocks[0]['questions'][4]['logic']);
         $this->assertSame(self::LOGO, $copy->headerItems()[0]['path']);
         Storage::disk('public')->assertExists(self::LOGO);
     }

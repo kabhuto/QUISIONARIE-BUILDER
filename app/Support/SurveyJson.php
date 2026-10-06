@@ -57,7 +57,13 @@ class SurveyJson
         $numbers = $survey->questionNumbers();
 
         return array_map(function (array $question) use ($numbers): array {
-            $rules = [$question['required'] ? 'wajib diisi' : 'boleh kosong'];
+            $rules = array_values(array_filter([
+                $question['required'] ? 'wajib diisi' : 'boleh kosong',
+                $question['hidden'] ? 'tersembunyi' : null,
+                $question['disabled'] ? 'tidak dapat diubah responden' : null,
+                $question['prefill'] !== '' ? 'nilai awal: '.$question['prefill'] : null,
+                $question['max_length'] ? "maksimal {$question['max_length']} karakter" : null,
+            ]));
 
             $rules[] = match ($question['type']) {
                 'short' => 'teks maksimal 255 karakter',
@@ -83,15 +89,14 @@ class SurveyJson
                 default => $question['type'],
             };
 
-            $condition = $question['condition'] ?? null;
-
             return [
                 'number' => $numbers[$question['id']],
                 'id' => $question['id'],
                 'label' => $question['label'],
                 'type' => $question['type'],
-                'rules' => $rules,
-                'shown_if' => $condition ? trim(($numbers[$condition['question_id']] ?? $condition['question_id']).' '.Survey::CONDITION_OPERATORS[$condition['operator']].' '.$condition['value']) : null,
+                'rules' => [...$rules, ...FieldValidation::describe($question, $numbers)],
+                'logic' => SurveyLogic::describe($question['logic'], $numbers),
+                'validation_message' => $question['validation']['message'] ?: null,
             ];
         }, $survey->questions());
     }

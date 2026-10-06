@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['answers'])]
+#[Fillable(['answers', 'flags'])]
 class SurveyResponse extends Model
 {
     /**
@@ -18,6 +18,7 @@ class SurveyResponse extends Model
     {
         return [
             'answers' => 'array',
+            'flags' => 'array',
         ];
     }
 

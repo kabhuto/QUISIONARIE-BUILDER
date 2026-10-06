@@ -3,7 +3,10 @@
 namespace App\Http\Requests;
 
 use App\Models\Survey;
+use App\Support\FieldValidation;
+use App\Support\SurveyLogic;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -30,7 +33,7 @@ class StoreSurveyRequest extends FormRequest
             $decoded = json_decode((string) $this->input($field), true);
 
             if (is_array($decoded)) {
-                $this->merge([$field => $decoded]);
+                $this->merge([$field => $field === 'blocks' ? SurveyLogic::upgradeBlocks($decoded) : $decoded]);
             }
         }
     }
@@ -106,7 +109,19 @@ class StoreSurveyRequest extends FormRequest
             "{$question}.code_length" => ['sometimes', 'integer', 'between:0,'.Survey::MAX_CODE_LENGTH],
             "{$question}.options" => ['sometimes', 'array'],
             "{$question}.options.*" => ['string', 'max:255'],
-            ...$conditionRules($question),
+            "{$question}.hidden" => ['sometimes', 'boolean'],
+            "{$question}.disabled" => ['sometimes', 'boolean'],
+            "{$question}.hide_label" => ['sometimes', 'boolean'],
+            "{$question}.placeholder" => ['nullable', 'string', 'max:255'],
+            "{$question}.prefill" => ['nullable', 'string', 'max:255'],
+            "{$question}.width" => ['sometimes', Rule::in(array_keys(Survey::FIELD_WIDTHS))],
+            "{$question}.help_position" => ['sometimes', Rule::in(['below', 'above'])],
+            "{$question}.max_length" => ['nullable', 'integer', 'between:1,5000'],
+            "{$question}.logic" => ['nullable', 'array'],
+            "{$question}.validation" => ['nullable', 'array'],
+            "{$question}.validation.rules" => ['sometimes', 'array', 'max:'.FieldValidation::MAX_RULES],
+            "{$question}.validation.message" => ['nullable', 'string', 'max:255'],
+            "{$question}.validation.checks" => ['sometimes', 'array', 'max:'.FieldValidation::MAX_CHECKS],
 
             "{$question}.region" => ['nullable', 'array'],
             "{$question}.region.fields" => ['sometimes', 'array'],
@@ -211,12 +226,153 @@ class StoreSurveyRequest extends FormRequest
             $this->checkCondition($validator, $block['condition'] ?? null, $earlierQuestions, "blocks.{$blockIndex}.condition", 'Blok '.Survey::roman($blockIndex + 1));
 
             foreach ($block['questions'] as $questionIndex => $question) {
-                $subject = isset($numbers[$question['id']]) ? "Pertanyaan {$numbers[$question['id']]}" : 'Keterangan';
-                $this->checkCondition($validator, $question['condition'] ?? null, $earlierQuestions, "blocks.{$blockIndex}.questions.{$questionIndex}.condition", $subject);
+                $subject = isset($numbers[$question['id']]) ? "pertanyaan {$numbers[$question['id']]}" : 'keterangan';
+                $key = "blocks.{$blockIndex}.questions.{$questionIndex}";
+                $this->checkLogic($validator, $question, $earlierQuestions, "{$key}.logic", $subject);
+                $self = in_array($question['type'], Survey::NON_LOGIC_TYPES, true) ? [] : [$question['id'] => $question];
+                $this->checkValidationRules($validator, $question, $earlierQuestions + $self, "{$key}.validation", $subject);
 
                 if (! in_array($question['type'], Survey::NON_LOGIC_TYPES, true)) {
                     $earlierQuestions[$question['id']] = $question;
                 }
+            }
+        }
+    }
+
+    /**
+     * Logic needs rules on earlier questions and at least one action that fits the base flags.
+     *
+     * @param  array<string, mixed>  $question
+     * @param  array<string, array<string, mixed>>  $earlierQuestions
+     */
+    private function checkLogic(Validator $validator, array $question, array $earlierQuestions, string $key, string $subject): void
+    {
+        $logic = $question['logic'] ?? null;
+
+        if ($logic === null) {
+            return;
+        }
+
+        $problem = is_array($logic) ? $this->groupProblem($logic['conditions'] ?? null, $earlierQuestions, 0) : 'tidak valid';
+        $actions = $logic['actions'] ?? [];
+
+        if ($problem === null && (! is_array($actions) || $actions === [])) {
+            $problem = 'belum memiliki tindakan';
+        }
+        if ($problem === null && array_diff($actions, self::allowedActions($question)) !== []) {
+            $problem = 'memiliki tindakan yang tidak sesuai dengan pengaturan isian';
+        }
+
+        if ($problem !== null) {
+            $validator->errors()->add($key, 'Logika '.$subject.' '.$problem.'.');
+        }
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $earlierQuestions
+     */
+    private function groupProblem(mixed $group, array $earlierQuestions, int $depth): ?string
+    {
+        if (! is_array($group) || ! in_array($group['operator'] ?? null, ['and', 'or'], true) || ! is_array($group['rules'] ?? null)) {
+            return 'tidak valid';
+        }
+        if ($group['rules'] === []) {
+            return 'belum memiliki aturan';
+        }
+        if (count($group['rules']) > SurveyLogic::MAX_RULES) {
+            return 'memiliki terlalu banyak aturan';
+        }
+
+        foreach ($group['rules'] as $rule) {
+            if (! is_array($rule)) {
+                return 'tidak valid';
+            }
+
+            if (array_key_exists('rules', $rule)) {
+                if ($depth >= 1) {
+                    return 'hanya boleh berisi satu tingkat grup aturan';
+                }
+                if ($problem = $this->groupProblem($rule, $earlierQuestions, $depth + 1)) {
+                    return $problem;
+                }
+
+                continue;
+            }
+
+            $operator = $rule['operator'] ?? null;
+            $value = trim((string) ($rule['value'] ?? ''));
+
+            if (! is_string($rule['question_id'] ?? null) || ! isset($earlierQuestions[$rule['question_id']])) {
+                return 'harus merujuk pertanyaan yang ada sebelumnya';
+            }
+            if (! is_string($operator) || ! array_key_exists($operator, Survey::CONDITION_OPERATORS)) {
+                return 'memakai pembanding yang tidak dikenal';
+            }
+            if (! in_array($operator, SurveyLogic::VALUELESS_OPERATORS, true) && $value === '') {
+                return 'belum memiliki nilai jawaban';
+            }
+            if (in_array($operator, ['greater_than', 'less_than'], true) && ! is_numeric(str_replace(',', '.', $value))) {
+                return 'harus memakai angka untuk pembanding lebih/kurang dari';
+            }
+            if (mb_strlen($value) > 255) {
+                return 'memiliki nilai yang terlalu panjang';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The actions that make sense for a question's base flags (e.g. "show" only for a hidden one).
+     *
+     * @param  array<string, mixed>  $question
+     * @return list<string>
+     */
+    public static function allowedActions(array $question): array
+    {
+        return [
+            ! empty($question['hidden']) ? 'show' : 'hide',
+            ! empty($question['disabled']) ? 'enable' : 'disable',
+            ! empty($question['required']) ? 'optional' : 'require',
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $question
+     */
+    private function checkValidationRules(Validator $validator, array $question, array $availableQuestions, string $key, string $subject): void
+    {
+        foreach ((array) ($question['validation']['checks'] ?? []) as $check) {
+            $problem = match (true) {
+                ! is_array($check) => 'tidak valid',
+                ! array_key_exists($check['level'] ?? '', FieldValidation::CHECK_LEVELS) => 'memiliki tingkat yang tidak dikenal',
+                trim((string) ($check['message'] ?? '')) === '' => 'belum memiliki pesan',
+                mb_strlen((string) $check['message']) > 255 => 'memiliki pesan yang terlalu panjang',
+                default => $this->groupProblem($check['conditions'] ?? null, $availableQuestions, 0),
+            };
+
+            if ($problem !== null) {
+                $validator->errors()->add($key, 'Pemeriksaan konsistensi '.$subject.' '.$problem.'.');
+
+                return;
+            }
+        }
+
+        $rules = $question['validation']['rules'] ?? [];
+        $allowed = FieldValidation::rulesFor($question['type']);
+
+        foreach ((array) $rules as $rule) {
+            $type = is_array($rule) ? ($rule['type'] ?? null) : null;
+
+            if (! is_string($type) || ! isset($allowed[$type])) {
+                $validator->errors()->add($key, 'Validasi '.$subject.' memakai aturan yang tidak berlaku untuk jenis isiannya.');
+
+                return;
+            }
+            if ($problem = FieldValidation::definitionProblem($type, (string) ($rule['value'] ?? ''))) {
+                $validator->errors()->add($key, 'Validasi '.$subject.': aturan "'.$allowed[$type]['label'].'" '.$problem.'.');
+
+                return;
             }
         }
     }
@@ -237,7 +393,7 @@ class StoreSurveyRequest extends FormRequest
             return;
         }
 
-        if ($condition['operator'] !== 'answered' && trim((string) ($condition['value'] ?? '')) === '') {
+        if (! in_array($condition['operator'], SurveyLogic::VALUELESS_OPERATORS, true) && trim((string) ($condition['value'] ?? '')) === '') {
             $validator->errors()->add($key, "Logika {$subject} belum memiliki nilai jawaban.");
         }
     }
@@ -332,7 +488,28 @@ class StoreSurveyRequest extends FormRequest
             'required' => $type !== 'info' && (bool) ($question['required'] ?? false),
             'code_length' => in_array($type, Survey::NON_LOGIC_TYPES, true) ? 0 : (int) ($question['code_length'] ?? 0),
             'options' => in_array($type, Survey::CHOICE_TYPES, true) ? array_values($question['options'] ?? []) : [],
-            'condition' => $this->normalizeCondition($question['condition'] ?? null),
+            'hidden' => (bool) ($question['hidden'] ?? false),
+            'disabled' => $type !== 'info' && (bool) ($question['disabled'] ?? false),
+            'hide_label' => $type !== 'info' && (bool) ($question['hide_label'] ?? false),
+            'placeholder' => in_array($type, Survey::PLACEHOLDER_TYPES, true) ? trim((string) ($question['placeholder'] ?? '')) : '',
+            'prefill' => in_array($type, Survey::PREFILL_TYPES, true) ? trim((string) ($question['prefill'] ?? '')) : '',
+            'width' => $question['width'] ?? 'full',
+            'help_position' => $question['help_position'] ?? 'below',
+            'max_length' => in_array($type, ['short', 'long'], true) && ($question['max_length'] ?? null) ? (int) $question['max_length'] : null,
+            'logic' => $this->normalizeLogic($question['logic'] ?? null),
+            'validation' => [
+                'rules' => collect($question['validation']['rules'] ?? [])
+                    ->filter(fn ($rule): bool => is_array($rule) && isset(FieldValidation::rulesFor($type)[$rule['type'] ?? '']))
+                    ->map(fn (array $rule): array => ['type' => $rule['type'], 'value' => trim((string) $rule['value'])])
+                    ->values()->all(),
+                'message' => trim((string) ($question['validation']['message'] ?? '')),
+                'checks' => collect($question['validation']['checks'] ?? [])->map(fn (array $check): array => [
+                    'id' => preg_match('/^[A-Za-z0-9_-]{1,40}$/', (string) ($check['id'] ?? '')) ? $check['id'] : 'k-'.Str::lower(Str::random(8)),
+                    'level' => $check['level'],
+                    'conditions' => $this->normalizeGroup($check['conditions']),
+                    'message' => trim((string) $check['message']),
+                ])->values()->all(),
+            ],
         ];
 
         if ($type === 'region') {
@@ -370,6 +547,38 @@ class StoreSurveyRequest extends FormRequest
     }
 
     /**
+     * @param  array<string, mixed>|null  $logic
+     * @return array<string, mixed>|null
+     */
+    private function normalizeLogic(?array $logic): ?array
+    {
+        if (! $logic || ! ($logic['conditions']['rules'] ?? [])) {
+            return null;
+        }
+
+        return [
+            'conditions' => $this->normalizeGroup($logic['conditions']),
+            'actions' => array_values(array_unique(array_intersect($logic['actions'], array_keys(SurveyLogic::ACTIONS)))),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $group
+     * @return array<string, mixed>
+     */
+    private function normalizeGroup(array $group): array
+    {
+        return [
+            'operator' => $group['operator'],
+            'rules' => array_map(fn (array $rule): array => isset($rule['rules']) ? $this->normalizeGroup($rule) : [
+                'question_id' => $rule['question_id'],
+                'operator' => $rule['operator'],
+                'value' => in_array($rule['operator'], SurveyLogic::VALUELESS_OPERATORS, true) ? '' : trim((string) ($rule['value'] ?? '')),
+            ], $group['rules']),
+        ];
+    }
+
+    /**
      * @param  array<int, mixed>  $values
      * @return list<string>
      */
@@ -391,7 +600,7 @@ class StoreSurveyRequest extends FormRequest
         return [
             'question_id' => $condition['question_id'],
             'operator' => $condition['operator'],
-            'value' => $condition['operator'] === 'answered' ? '' : trim((string) ($condition['value'] ?? '')),
+            'value' => in_array($condition['operator'], SurveyLogic::VALUELESS_OPERATORS, true) ? '' : trim((string) ($condition['value'] ?? '')),
         ];
     }
 }

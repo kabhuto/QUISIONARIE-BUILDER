@@ -2,14 +2,148 @@
 
 namespace App\Support;
 
+use App\Models\Survey;
+
 /**
- * Evaluates "show this block/question when…" conditions.
+ * Field logic in the style of OpnForm: every question has base flags (required, hidden, disabled)
+ * and optional logic — "when these rules (AND/OR, one level of groups) are true, apply these actions".
  *
- * Mirrors the evaluation in public/js/fill.js: conditions may only point at earlier questions,
- * and a hidden question counts as unanswered for everything after it.
+ * Mirrors public/js/fill.js. Rules may only point at earlier questions, and a hidden question
+ * counts as unanswered for everything after it.
  */
 class SurveyLogic
 {
+    public const ACTIONS = [
+        'hide' => 'sembunyikan',
+        'show' => 'tampilkan',
+        'disable' => 'nonaktifkan',
+        'enable' => 'aktifkan',
+        'require' => 'jadikan wajib',
+        'optional' => 'jadikan opsional',
+    ];
+
+    public const VALUELESS_OPERATORS = ['answered', 'empty'];
+
+    public const MAX_RULES = 20;
+
+    /**
+     * Fills in the field settings a question may lack, and turns the old single "show when"
+     * condition into the equivalent "hidden + show when …" logic.
+     *
+     * @param  array<string, mixed>  $question
+     * @return array<string, mixed>
+     */
+    public static function upgradeQuestion(array $question): array
+    {
+        $legacy = $question['condition'] ?? null;
+        unset($question['condition']);
+
+        $question += [
+            'description' => '',
+            'required' => false,
+            'hidden' => false,
+            'disabled' => false,
+            'hide_label' => false,
+            'placeholder' => '',
+            'prefill' => '',
+            'width' => 'full',
+            'help_position' => 'below',
+            'max_length' => null,
+            'code_length' => 0,
+            'options' => [],
+            'logic' => null,
+            'validation' => [],
+        ];
+        $question['validation'] = (is_array($question['validation']) ? $question['validation'] : []) + ['rules' => [], 'message' => '', 'checks' => []];
+
+        if (is_array($legacy) && ($legacy['question_id'] ?? null) && ! $question['logic']) {
+            $question['hidden'] = true;
+            $question['logic'] = [
+                'conditions' => ['operator' => 'and', 'rules' => [$legacy]],
+                'actions' => ['show'],
+            ];
+        }
+
+        return $question;
+    }
+
+    /**
+     * @param  array<int, mixed>  $blocks
+     * @return array<int, mixed>
+     */
+    public static function upgradeBlocks(array $blocks): array
+    {
+        foreach ($blocks as $blockIndex => $block) {
+            if (! is_array($block) || ! is_array($block['questions'] ?? null)) {
+                continue;
+            }
+            foreach ($block['questions'] as $questionIndex => $question) {
+                if (is_array($question)) {
+                    $blocks[$blockIndex]['questions'][$questionIndex] = self::upgradeQuestion($question);
+                }
+            }
+        }
+
+        return $blocks;
+    }
+
+    /**
+     * The effective hidden / disabled / required state of every question for the given answers.
+     *
+     * @param  array<int, array<string, mixed>>  $blocks
+     * @param  array<string, mixed>  $answers
+     * @return array<string, array{hidden: bool, disabled: bool, required: bool}>
+     */
+    public static function states(array $blocks, array $answers): array
+    {
+        return self::analyse($blocks, $answers)['states'];
+    }
+
+    /**
+     * The states, plus the answer of every visible question as the logic sees it
+     * (a disabled question holds its pre-filled value).
+     *
+     * @param  array<int, array<string, mixed>>  $blocks
+     * @param  array<string, mixed>  $answers
+     * @return array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>}
+     */
+    public static function analyse(array $blocks, array $answers): array
+    {
+        $known = [];
+        $states = [];
+
+        foreach ($blocks as $block) {
+            $blockVisible = self::passes($block['condition'] ?? null, $known);
+
+            foreach ($block['questions'] as $question) {
+                $question = self::upgradeQuestion($question);
+                $state = [
+                    'hidden' => ! $blockVisible || $question['hidden'],
+                    'disabled' => $question['disabled'],
+                    'required' => $question['required'],
+                ];
+
+                $logic = $question['logic'];
+                if ($blockVisible && $logic && self::evaluate($logic['conditions'] ?? null, $known)) {
+                    $state = self::apply($logic['actions'] ?? [], $state);
+                }
+
+                if ($question['type'] === 'info' || $state['hidden'] || $state['disabled']) {
+                    $state['required'] = false;
+                }
+
+                $states[$question['id']] = $state;
+
+                if (! $state['hidden']) {
+                    // A disabled field cannot be changed by the respondent, so it holds its pre-filled value.
+                    $known[$question['id']] = $state['disabled'] ? ($question['prefill'] ?: null) : ($answers[$question['id']] ?? null);
+                }
+            }
+        }
+
+        return ['states' => $states, 'known' => $known];
+    }
+
     /**
      * @param  array<int, array<string, mixed>>  $blocks
      * @param  array<string, mixed>  $answers
@@ -17,21 +151,51 @@ class SurveyLogic
      */
     public static function visibleQuestionIds(array $blocks, array $answers): array
     {
-        $visibleAnswers = [];
+        return array_keys(array_filter(self::states($blocks, $answers), fn (array $state): bool => ! $state['hidden']));
+    }
 
-        foreach ($blocks as $block) {
-            if (! self::passes($block['condition'] ?? null, $visibleAnswers)) {
-                continue;
-            }
-
-            foreach ($block['questions'] as $question) {
-                if (self::passes($question['condition'] ?? null, $visibleAnswers)) {
-                    $visibleAnswers[$question['id']] = $answers[$question['id']] ?? null;
-                }
-            }
+    /**
+     * @param  list<string>  $actions
+     * @param  array{hidden: bool, disabled: bool, required: bool}  $state
+     * @return array{hidden: bool, disabled: bool, required: bool}
+     */
+    public static function apply(array $actions, array $state): array
+    {
+        foreach ($actions as $action) {
+            match ($action) {
+                'hide' => $state['hidden'] = true,
+                'show' => $state['hidden'] = false,
+                'disable' => $state['disabled'] = true,
+                'enable' => $state['disabled'] = false,
+                'require' => $state['required'] = true,
+                'optional' => $state['required'] = false,
+                default => null,
+            };
         }
 
-        return array_keys($visibleAnswers);
+        return $state;
+    }
+
+    /**
+     * Evaluates a group {operator: and|or, rules: [...]}; a rule is a nested group or a single condition.
+     *
+     * @param  array<string, mixed>|null  $group
+     * @param  array<string, mixed>  $answers
+     */
+    public static function evaluate(?array $group, array $answers): bool
+    {
+        $rules = $group['rules'] ?? [];
+
+        if ($rules === []) {
+            return false;
+        }
+
+        $results = array_map(
+            fn (array $rule): bool => isset($rule['rules']) ? self::evaluate($rule, $answers) : self::passes($rule, $answers),
+            $rules,
+        );
+
+        return ($group['operator'] ?? 'and') === 'or' ? in_array(true, $results, true) : ! in_array(false, $results, true);
     }
 
     /**
@@ -45,16 +209,73 @@ class SurveyLogic
         }
 
         $answer = $answers[$condition['question_id']] ?? null;
-        $value = (string) ($condition['value'] ?? '');
+        $value = mb_strtolower(trim((string) ($condition['value'] ?? '')));
         $isAnswered = is_array($answer) ? $answer !== [] : trim((string) $answer) !== '';
-        $equals = is_array($answer)
-            ? in_array($value, array_map('strval', $answer), true)
-            : trim((string) $answer) === $value;
+        $values = array_map(fn ($item): string => mb_strtolower(trim((string) $item)), is_array($answer) ? $answer : [$answer]);
+        $text = is_array($answer) ? '' : mb_strtolower(trim((string) $answer));
+
+        $equals = is_array($answer) ? in_array($value, $values, true) : $text === $value;
+        $contains = is_array($answer) ? in_array($value, $values, true) : ($value !== '' && str_contains($text, $value));
+        $number = self::number($answer);
+        $target = self::number($condition['value'] ?? null);
 
         return match ($condition['operator']) {
             'answered' => $isAnswered,
+            'empty' => ! $isAnswered,
             'not_equals' => ! $equals,
+            'contains' => $contains,
+            'not_contains' => ! $contains,
+            'greater_than' => $number !== null && $target !== null && $number > $target,
+            'less_than' => $number !== null && $target !== null && $number < $target,
             default => $equals,
         };
+    }
+
+    /**
+     * Readable form of a logic definition, e.g. "Jika 102 sama dengan Ya maka tampilkan".
+     *
+     * @param  array<string, mixed>|null  $logic
+     * @param  array<string, string>  $numbers
+     */
+    public static function describe(?array $logic, array $numbers): ?string
+    {
+        if (! $logic || ! ($logic['conditions']['rules'] ?? [])) {
+            return null;
+        }
+
+        $actions = implode(', ', array_map(fn (string $action): string => self::ACTIONS[$action] ?? $action, $logic['actions'] ?? []));
+
+        return 'Jika '.self::describeGroup($logic['conditions'], $numbers).' maka '.$actions;
+    }
+
+    /**
+     * @param  array<string, mixed>  $group
+     * @param  array<string, string>  $numbers
+     */
+    private static function describeGroup(array $group, array $numbers): string
+    {
+        $parts = array_map(function (array $rule) use ($numbers): string {
+            if (isset($rule['rules'])) {
+                return '('.self::describeGroup($rule, $numbers).')';
+            }
+
+            $operator = Survey::CONDITION_OPERATORS[$rule['operator']] ?? $rule['operator'];
+            $value = in_array($rule['operator'], self::VALUELESS_OPERATORS, true) ? '' : ' '.$rule['value'];
+
+            return ($numbers[$rule['question_id']] ?? $rule['question_id']).' '.$operator.$value;
+        }, $group['rules']);
+
+        return implode(($group['operator'] ?? 'and') === 'or' ? ' atau ' : ' dan ', $parts);
+    }
+
+    private static function number(mixed $value): ?float
+    {
+        if (is_array($value) || $value === null) {
+            return null;
+        }
+
+        $value = str_replace(',', '.', trim((string) $value));
+
+        return is_numeric($value) ? (float) $value : null;
     }
 }

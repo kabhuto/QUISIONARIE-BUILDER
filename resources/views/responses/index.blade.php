@@ -100,7 +100,7 @@
                     <tbody>
                         @foreach ($responses as $response)
                             <tr>
-                                <td class="mono">{{ $responses->count() - $loop->index }}</td>
+                                <td class="mono">{{ $responses->count() - $loop->index }}@if ($response->flags['confirmed_warnings'] ?? null)<span class="flag-dot" title="Ada peringatan konsistensi yang dikonfirmasi responden">⚠</span>@endif</td>
                                 <td>{{ $response->created_at->translatedFormat('d M Y, H:i') }}</td>
                                 @foreach ($previewQuestions as $question)
                                     <td>{{ \Illuminate\Support\Str::limit($response->displayAnswer($question), 40) ?: '—' }}</td>

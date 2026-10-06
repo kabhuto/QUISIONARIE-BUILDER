@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreSurveyRequest;
 use App\Models\Survey;
+use App\Support\FieldValidation;
+use App\Support\SurveyLogic;
 use App\Support\SurveyTemplates;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -93,6 +95,15 @@ class SurveyController extends Controller
                 'tableColumnTypes' => Survey::TABLE_COLUMN_TYPES,
                 'maxTableColumns' => Survey::MAX_TABLE_COLUMNS,
                 'maxTableRows' => Survey::MAX_TABLE_ROWS,
+                'valuelessOperators' => SurveyLogic::VALUELESS_OPERATORS,
+                'logicActions' => SurveyLogic::ACTIONS,
+                'maxRules' => SurveyLogic::MAX_RULES,
+                'fieldWidths' => Survey::FIELD_WIDTHS,
+                'prefillTypes' => Survey::PREFILL_TYPES,
+                'placeholderTypes' => Survey::PLACEHOLDER_TYPES,
+                'validationRules' => FieldValidation::RULES,
+                'checkLevels' => FieldValidation::CHECK_LEVELS,
+                'maxChecks' => FieldValidation::MAX_CHECKS,
             ],
             'headerConfig' => [
                 'items' => $survey->headerItems(),

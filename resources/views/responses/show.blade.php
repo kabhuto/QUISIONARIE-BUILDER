@@ -16,6 +16,17 @@
         </div>
     </div>
 
+    @php
+        $confirmed = collect($response->flags['confirmed_warnings'] ?? [])->groupBy('question_id');
+    @endphp
+
+    @if ($confirmed->isNotEmpty())
+        <div class="flag-summary" role="note">
+            <strong>⚠ {{ $confirmed->flatten(1)->count() }} peringatan konsistensi dikonfirmasi responden</strong>
+            <p>Responden menyatakan jawaban berikut sudah benar meski tampak tidak konsisten. Periksa kembali sebelum data diolah.</p>
+        </div>
+    @endif
+
     <div class="detail-sheet">
         @foreach ($survey->blocks as $blockIndex => $block)
             <section class="detail-block">
@@ -62,6 +73,9 @@
                             @else
                                 <dd>{{ $response->displayAnswer($question) }}</dd>
                             @endif
+                            @foreach ($confirmed->get($question['id'], []) as $warning)
+                                <p class="detail-flag">⚠ Peringatan dikonfirmasi: {{ $warning['message'] }}</p>
+                            @endforeach
                         </div>
                     @endforeach
                 </dl>

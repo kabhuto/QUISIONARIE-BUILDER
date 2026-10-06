@@ -21,7 +21,7 @@ class FormSubmissionController extends Controller
     {
         abort_unless($survey->isPublished(), 404);
 
-        $survey->responses()->create(['answers' => $request->answers()]);
+        $survey->responses()->create(['answers' => $request->answers(), 'flags' => $request->flags()]);
 
         return redirect()->route('form.thanks', $survey);
     }

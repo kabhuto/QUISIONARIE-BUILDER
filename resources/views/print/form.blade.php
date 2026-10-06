@@ -70,6 +70,8 @@
                         <colgroup><col class="col-num"><col class="col-label"><col class="col-answer"><col class="col-code" style="width: {{ $widestCode ? $widestCode * (($block['layout'] ?? 'full') === 'half' ? 13 : 15) + 12 : 0 }}px"></colgroup>
                         <tbody>
                             @foreach ($block['questions'] as $question)
+                                {{-- Always-hidden fields (e.g. tracking values) have no place on paper. --}}
+                                @continue($question['hidden'] && ! in_array('show', $question['logic']['actions'] ?? [], true))
                                 @include('print.partials.question')
                             @endforeach
                         </tbody>

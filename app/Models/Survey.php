@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Support\SurveyLogic;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
@@ -40,8 +42,25 @@ class Survey extends Model
     public const CONDITION_OPERATORS = [
         'equals' => 'sama dengan',
         'not_equals' => 'tidak sama dengan',
+        'contains' => 'berisi',
+        'not_contains' => 'tidak berisi',
         'answered' => 'sudah diisi',
+        'empty' => 'kosong',
+        'greater_than' => 'lebih dari',
+        'less_than' => 'kurang dari',
     ];
+
+    /**
+     * Width of a question on the respondent form, as a fraction of the row.
+     */
+    public const FIELD_WIDTHS = ['full' => 'Penuh', '1/2' => '1/2', '1/3' => '1/3', '2/3' => '2/3', '1/4' => '1/4', '3/4' => '3/4'];
+
+    /**
+     * Question types whose answer can be typed or chosen up front (the "Nilai awal" option).
+     */
+    public const PREFILL_TYPES = ['short', 'long', 'number', 'currency', 'date', 'email', 'phone', 'code', 'single', 'dropdown'];
+
+    public const PLACEHOLDER_TYPES = ['short', 'long', 'number', 'currency', 'email', 'phone', 'dropdown'];
 
     public const REGION_FIELDS = [
         'provinsi' => 'Provinsi',
@@ -169,9 +188,22 @@ class Survey extends Model
             'settings' => 'array',
             'header' => 'array',
             'intro' => 'array',
-            'blocks' => 'array',
             'published_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Blocks with every question's field settings filled in; older "show when" conditions are
+     * read as the equivalent hidden-plus-logic settings.
+     *
+     * @return Attribute<array<int, array<string, mixed>>|null, array<int, array<string, mixed>>>
+     */
+    protected function blocks(): Attribute
+    {
+        return Attribute::make(
+            get: fn (?string $value): ?array => $value === null ? null : SurveyLogic::upgradeBlocks(json_decode($value, true) ?? []),
+            set: fn (array $value): string => json_encode($value),
+        );
     }
 
     /**
