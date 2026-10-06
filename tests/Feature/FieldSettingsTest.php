@@ -240,4 +240,32 @@ class FieldSettingsTest extends TestCase
             'header' => json_encode(['items' => []]), 'blocks' => json_encode($blocks),
         ])->assertSessionHasErrors('blocks.0.questions.1.validation');
     }
+
+    public function test_blocks_can_mix_portrait_and_landscape_pages(): void
+    {
+        $block = fn (string $id, array $attributes = []): array => [
+            'id' => $id, 'title' => 'BLOK '.$id, 'layout' => 'full', 'condition' => null,
+            'questions' => [$this->question('q-'.$id, 'short', 'Isian '.$id)], ...$attributes,
+        ];
+        $payload = [
+            'title' => 'Survei', 'form_code' => 'S-1', 'activity' => 'Pendataan',
+            'settings' => ['paper_size' => 'A4', 'orientation' => 'portrait', 'period_type' => 'none', 'numbering' => 'block', 'theme' => 'blue', 'confidential' => '0'],
+            'header' => json_encode(['items' => []]),
+        ];
+
+        $this->post(route('surveys.store'), [...$payload, 'blocks' => json_encode([$block('a'), $block('b', ['orientation' => 'landscape']), $block('c', ['orientation' => 'landscape']), $block('d')])])
+            ->assertSessionHasNoErrors();
+
+        $survey = Survey::query()->sole();
+        $this->assertSame(['portrait', 'landscape', 'landscape', 'portrait'], array_map($survey->blockOrientation(...), $survey->blocks));
+
+        // Three sheets: portrait, landscape (two blocks together), portrait again.
+        $html = $this->get(route('surveys.print', $survey))->assertOk()->assertSee('potret + lanskap')->getContent();
+        $this->assertSame(2, substr_count($html, '<main class="sheet is-portrait">'));
+        $this->assertSame(1, substr_count($html, '<main class="sheet is-landscape">'));
+        $this->assertSame(substr_count($html, '<main'), substr_count($html, '</main>'));
+
+        $this->post(route('surveys.store'), [...$payload, 'blocks' => json_encode([$block('a', ['orientation' => 'miring'])])])
+            ->assertSessionHasErrors('blocks.0.orientation');
+    }
 }

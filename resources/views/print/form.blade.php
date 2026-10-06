@@ -4,6 +4,11 @@
         [$paperWidth, $paperHeight] = [$paperHeight, $paperWidth];
     }
     $periodLabel = $survey->periodLabel();
+    // Blocks may set their own orientation, so one form can mix portrait and landscape pages.
+    [$longSide, $shortSide] = [max($paperWidth, $paperHeight), min($paperWidth, $paperHeight)];
+    $orientations = array_map(fn (array $block): string => $survey->blockOrientation($block), $survey->blocks ?? []);
+    $firstOrientation = $orientations[0] ?? $settings['orientation'];
+    $isMixed = count(array_unique($orientations)) > 1;
 @endphp
 <!DOCTYPE html>
 <html lang="id">
@@ -14,17 +19,20 @@
     <link rel="stylesheet" href="{{ asset('css/print.css') }}">
     <style>
         @page { size: {{ $paperWidth }}mm {{ $paperHeight }}mm; margin: 10mm; }
-        .sheet { width: {{ $paperWidth }}mm; min-height: {{ $paperHeight }}mm; }
+        @page potret { size: {{ $shortSide }}mm {{ $longSide }}mm; margin: 10mm; }
+        @page lanskap { size: {{ $longSide }}mm {{ $shortSide }}mm; margin: 10mm; }
+        .sheet.is-portrait { page: potret; width: {{ $shortSide }}mm; min-height: {{ $longSide }}mm; }
+        .sheet.is-landscape { page: lanskap; width: {{ $longSide }}mm; min-height: {{ $shortSide }}mm; }
     </style>
 </head>
 <body class="print-page">
     <div class="print-toolbar">
         <a href="{{ $response ? route('surveys.responses.show', [$survey, $response]) : route('surveys.edit', $survey) }}">← Kembali</a>
-        <span>{{ $response ? 'Formulir terisi' : 'Formulir kosong' }} · kertas {{ $settings['paper_size'] }} {{ $settings['orientation'] === 'landscape' ? 'lanskap' : 'potret' }}</span>
+        <span>{{ $response ? 'Formulir terisi' : 'Formulir kosong' }} · kertas {{ $settings['paper_size'] }} {{ $isMixed ? 'potret + lanskap' : ($firstOrientation === 'landscape' ? 'lanskap' : 'potret') }}</span>
         <button type="button" onclick="window.print()">Cetak / simpan PDF</button>
     </div>
 
-    <main class="sheet">
+    <main class="sheet is-{{ $firstOrientation }}">
         @php
             $topline = array_fill_keys(array_keys(\App\Models\Survey::HEADER_SLOTS), []);
             if ($settings['topline_label'] !== '') {
@@ -61,6 +69,13 @@
 
         <div class="sheet-blocks">
             @foreach ($survey->blocks as $blockIndex => $block)
+                @if ($blockIndex > 0 && $orientations[$blockIndex] !== $orientations[$blockIndex - 1])
+                    {{-- A change of orientation starts a new sheet (and a new printed page). --}}
+                    </div>
+                    </main>
+                    <main class="sheet is-{{ $orientations[$blockIndex] }}">
+                    <div class="sheet-blocks">
+                @endif
                 <section @class(['sheet-block', 'is-half' => ($block['layout'] ?? 'full') === 'half'])>
                     <div class="sheet-block-title">BLOK {{ \App\Models\Survey::roman($blockIndex + 1) }}. {{ $block['title'] }}</div>
                     <table class="sheet-table">

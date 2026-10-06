@@ -241,6 +241,18 @@ class Survey extends Model
      *
      * @return Attribute<array<int, array<string, mixed>>|null, array<int, array<string, mixed>>>
      */
+    /**
+     * The page orientation a block is printed in: its own, or the form's when it has none.
+     *
+     * @param  array<string, mixed>  $block
+     */
+    public function blockOrientation(array $block): string
+    {
+        $own = $block['orientation'] ?? '';
+
+        return in_array($own, ['portrait', 'landscape'], true) ? $own : ($this->settings['orientation'] ?? 'portrait');
+    }
+
     protected function blocks(): Attribute
     {
         return Attribute::make(

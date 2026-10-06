@@ -89,7 +89,7 @@
     }
 
     function makeBlock(title = '', questions = []) {
-        return { id: makeId('b'), title, layout: 'full', questions, condition: null };
+        return { id: makeId('b'), title, layout: 'full', orientation: '', questions, condition: null };
     }
 
     function normalizeRegion(region) {
@@ -234,6 +234,7 @@
                 id: String(block?.id || makeId('b')),
                 title: String(block?.title ?? ''),
                 layout: block?.layout === 'half' ? 'half' : 'full',
+                orientation: ['portrait', 'landscape'].includes(block?.orientation) ? block.orientation : '',
                 condition: normalizeCondition(block?.condition),
                 questions: (Array.isArray(block?.questions) ? block.questions : [])
                     .filter(question => config.questionTypes[question?.type])
@@ -804,6 +805,7 @@
                     <span class="drag-handle" data-drag-handle title="Seret untuk memindahkan blok">⠿</span>
                     <span class="block-prefix">BLOK ${roman}.</span>
                     <input class="block-title" type="text" maxlength="160" value="${escapeHtml(block.title)}" placeholder="JUDUL BLOK" data-field="block-title" aria-label="Judul blok ${roman}">
+                    ${block.orientation ? `<span class="orientation-chip" title="Blok ini dicetak pada halaman ${block.orientation === 'landscape' ? 'lanskap' : 'potret'}">${block.orientation === 'landscape' ? '▭ Lanskap' : '▯ Potret'}</span>` : ''}
                     <span class="logic-slot">${logicBadge('block', block.id)}</span>
                     <button class="question-remove" type="button" data-action="remove-block" aria-label="Hapus blok ${roman}">×</button>
                 </header>
@@ -1051,6 +1053,12 @@
                         <label><input class="sr-only" type="radio" name="block-layout" value="half" data-setting="layout" ${block.layout === 'half' ? 'checked' : ''}><span>Setengah</span></label>
                     </div>
                 </div>
+                <div class="setting-field"><span>Orientasi halaman (lembar cetak)</span>
+                    <div class="width-options">
+                        ${[['', 'Ikut formulir'], ['portrait', 'Potret'], ['landscape', 'Lanskap']].map(([value, label]) => `<label><input class="sr-only" type="radio" name="block-orientation" value="${value}" data-setting="orientation" ${block.orientation === value ? 'checked' : ''}><span>${label}</span></label>`).join('')}
+                    </div>
+                </div>
+                <p class="setting-note">Blok dengan orientasi berbeda dicetak mulai halaman baru, jadi satu kuesioner bisa berisi halaman potret dan lanskap.</p>
                 <label class="setting-field"><span>Tambah isian ke blok ini</span>
                     <select class="setting-select" data-setting="add-question">
                         <option value="">Pilih jenis…</option>
@@ -1397,6 +1405,12 @@
         if (setting === 'add-question') {
             const found = selected?.kind === 'block' && findBlock(selected.id);
             if (found && target.value) addQuestion(target.value, found.block);
+            return;
+        }
+        if (setting === 'orientation') {
+            const found = selected?.kind === 'block' && findBlock(selected.id);
+            if (found) found.block.orientation = target.value;
+            render();
             return;
         }
         if (setting === 'layout') {

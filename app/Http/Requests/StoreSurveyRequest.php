@@ -100,6 +100,7 @@ class StoreSurveyRequest extends FormRequest
             'blocks.*.id' => ['required', 'string', 'max:80', self::ID_PATTERN, 'distinct'],
             'blocks.*.title' => ['required', 'string', 'max:160'],
             'blocks.*.layout' => ['sometimes', Rule::in(['full', 'half'])],
+            'blocks.*.orientation' => ['sometimes', 'nullable', Rule::in(['portrait', 'landscape'])],
             ...$conditionRules('blocks.*'),
             'blocks.*.questions' => ['present', 'array'],
             "{$question}.id" => ['required', 'string', 'max:80', self::ID_PATTERN, 'distinct'],
@@ -515,6 +516,8 @@ class StoreSurveyRequest extends FormRequest
                 'id' => $block['id'],
                 'title' => $block['title'],
                 'layout' => $block['layout'] ?? 'full',
+                // Empty follows the form's orientation; otherwise this block starts its own pages.
+                'orientation' => $block['orientation'] ?? '',
                 'condition' => $this->normalizeCondition($block['condition'] ?? null),
                 'questions' => collect($block['questions'])->map(fn (array $question): array => $this->normalizeQuestion($question))->values()->all(),
             ])->values()->all(),
