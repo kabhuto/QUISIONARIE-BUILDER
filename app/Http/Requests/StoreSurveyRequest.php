@@ -53,6 +53,7 @@ class StoreSurveyRequest extends FormRequest
             "{$prefix}.condition.value" => ['nullable', 'string', 'max:255'],
         ];
         $question = 'blocks.*.questions.*';
+        $rangeBound = ['sometimes', 'integer', 'between:-'.Survey::RANGE_LIMIT.','.Survey::RANGE_LIMIT];
 
         return [
             'title' => ['required', 'string', 'max:160'],
@@ -132,6 +133,17 @@ class StoreSurveyRequest extends FormRequest
             "{$question}.region.fields.*.code" => ['nullable', 'string', 'max:20'],
             "{$question}.region.fields.*.name" => ['nullable', 'string', 'max:120'],
 
+            "{$question}.range" => ['nullable', 'array'],
+            "{$question}.range.min" => $rangeBound,
+            "{$question}.range.max" => $rangeBound,
+            "{$question}.range.step" => ['sometimes', 'integer', 'between:1,'.Survey::RANGE_LIMIT],
+
+            "{$question}.matrix" => ['nullable', 'array'],
+            "{$question}.matrix.rows" => ['sometimes', 'array', 'max:'.Survey::MAX_MATRIX_ROWS],
+            "{$question}.matrix.rows.*" => ['nullable', 'string', 'max:120'],
+            "{$question}.matrix.columns" => ['sometimes', 'array', 'max:'.Survey::MAX_MATRIX_COLUMNS],
+            "{$question}.matrix.columns.*" => ['nullable', 'string', 'max:120'],
+
             "{$question}.table" => ['nullable', 'array'],
             "{$question}.table.mode" => ['sometimes', Rule::in(['fixed', 'dynamic'])],
             "{$question}.table.max_rows" => ['sometimes', 'integer', 'between:1,'.Survey::MAX_TABLE_ROWS],
@@ -177,7 +189,7 @@ class StoreSurveyRequest extends FormRequest
     }
 
     /**
-     * Region and table questions need their configuration to be usable.
+     * Region, range, matrix and table questions need their configuration to be usable.
      *
      * @param  array<int, array<string, mixed>>  $blocks
      */
@@ -189,6 +201,21 @@ class StoreSurveyRequest extends FormRequest
 
                 if ($question['type'] === 'region' && collect($question['region']['fields'] ?? [])->where('enabled', true)->isEmpty()) {
                     $validator->errors()->add("{$key}.region", "Identitas wilayah \"{$question['label']}\" membutuhkan minimal satu isian.");
+                }
+
+                if (in_array($question['type'], Survey::RANGE_TYPES, true) && ($problem = $this->rangeProblem($question))) {
+                    $validator->errors()->add("{$key}.range", $problem);
+                }
+
+                if ($question['type'] === 'matrix') {
+                    $rows = $this->cleanList($question['matrix']['rows'] ?? []);
+                    $columns = $this->cleanList($question['matrix']['columns'] ?? []);
+
+                    if ($rows === [] || count($columns) < 2) {
+                        $validator->errors()->add("{$key}.matrix", "Matriks \"{$question['label']}\" membutuhkan minimal satu baris dan dua kolom pilihan.");
+                    } elseif (count(array_unique($rows)) < count($rows) || count(array_unique($columns)) < count($columns)) {
+                        $validator->errors()->add("{$key}.matrix", "Baris dan kolom matriks \"{$question['label']}\" tidak boleh kembar.");
+                    }
                 }
 
                 if ($question['type'] !== 'table') {
@@ -210,6 +237,22 @@ class StoreSurveyRequest extends FormRequest
                 }
             }
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $question
+     */
+    private function rangeProblem(array $question): ?string
+    {
+        $range = $this->normalizeRange($question);
+        $points = intdiv($range['max'] - $range['min'], $range['step']) + 1;
+
+        return match (true) {
+            $range['max'] <= $range['min'] => "Nilai terbesar \"{$question['label']}\" harus lebih dari nilai terkecilnya.",
+            $range['step'] > $range['max'] - $range['min'] => "Kelipatan \"{$question['label']}\" melebihi rentang nilainya.",
+            $question['type'] !== 'slider' && $points > Survey::MAX_RANGE_POINTS => "\"{$question['label']}\" maksimal memiliki ".Survey::MAX_RANGE_POINTS.' pilihan nilai.',
+            default => null,
+        };
     }
 
     /**
@@ -486,7 +529,7 @@ class StoreSurveyRequest extends FormRequest
             'label' => $question['label'],
             'description' => trim((string) ($question['description'] ?? '')),
             'required' => $type !== 'info' && (bool) ($question['required'] ?? false),
-            'code_length' => in_array($type, Survey::NON_LOGIC_TYPES, true) ? 0 : (int) ($question['code_length'] ?? 0),
+            'code_length' => in_array($type, Survey::NO_CODE_TYPES, true) ? 0 : (int) ($question['code_length'] ?? 0),
             'options' => in_array($type, Survey::CHOICE_TYPES, true) ? array_values($question['options'] ?? []) : [],
             'hidden' => (bool) ($question['hidden'] ?? false),
             'disabled' => $type !== 'info' && (bool) ($question['disabled'] ?? false),
@@ -523,6 +566,17 @@ class StoreSurveyRequest extends FormRequest
                     'code' => trim((string) ($fields[$key]['code'] ?? '')),
                     'name' => trim((string) ($fields[$key]['name'] ?? '')),
                 ])->values()->all(),
+            ];
+        }
+
+        if (in_array($type, Survey::RANGE_TYPES, true)) {
+            $normalized['range'] = $this->normalizeRange($question);
+        }
+
+        if ($type === 'matrix') {
+            $normalized['matrix'] = [
+                'rows' => $this->cleanList($question['matrix']['rows'] ?? []),
+                'columns' => $this->cleanList($question['matrix']['columns'] ?? []),
             ];
         }
 
@@ -575,6 +629,24 @@ class StoreSurveyRequest extends FormRequest
                 'operator' => $rule['operator'],
                 'value' => in_array($rule['operator'], SurveyLogic::VALUELESS_OPERATORS, true) ? '' : trim((string) ($rule['value'] ?? '')),
             ], $group['rules']),
+        ];
+    }
+
+    /**
+     * The range of a rating, scale or slider. Ratings always count from one star.
+     *
+     * @param  array<string, mixed>  $question
+     * @return array{min: int, max: int, step: int}
+     */
+    private function normalizeRange(array $question): array
+    {
+        $range = array_merge(Survey::RANGE_DEFAULTS[$question['type']], array_filter((array) ($question['range'] ?? []), is_numeric(...)));
+        $isRating = $question['type'] === 'rating';
+
+        return [
+            'min' => $isRating ? 1 : (int) $range['min'],
+            'max' => (int) $range['max'],
+            'step' => $isRating ? 1 : (int) $range['step'],
         ];
     }
 

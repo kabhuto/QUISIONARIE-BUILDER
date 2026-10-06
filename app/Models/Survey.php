@@ -24,20 +24,63 @@ class Survey extends Model
         'date' => 'Tanggal',
         'email' => 'Email',
         'phone' => 'Nomor telepon',
+        'url' => 'Tautan (URL)',
         'code' => 'Isian kode',
+        'checkbox' => 'Kotak centang',
+        'rating' => 'Rating bintang',
+        'scale' => 'Skala linear',
+        'slider' => 'Penggeser',
+        'matrix' => 'Matriks pilihan',
         'region' => 'Identitas wilayah',
         'table' => 'Tabel / listing',
+        'signature' => 'Tanda tangan',
         'info' => 'Keterangan',
     ];
 
     public const CHOICE_TYPES = ['single', 'multiple', 'dropdown'];
 
     /**
+     * Types answered with a whole number picked from a configured range.
+     */
+    public const RANGE_TYPES = ['rating', 'scale', 'slider'];
+
+    public const NUMERIC_TYPES = ['number', 'currency', ...self::RANGE_TYPES];
+
+    /**
      * Types that hold structured answers, or none at all; they cannot drive display logic.
      */
-    public const NON_LOGIC_TYPES = ['region', 'table', 'info'];
+    public const NON_LOGIC_TYPES = ['region', 'table', 'matrix', 'info'];
+
+    /**
+     * Types without code boxes on the printed sheet.
+     */
+    public const NO_CODE_TYPES = [...self::NON_LOGIC_TYPES, 'signature'];
 
     public const MAX_CODE_LENGTH = 20;
+
+    public const RANGE_DEFAULTS = [
+        'rating' => ['min' => 1, 'max' => 5, 'step' => 1],
+        'scale' => ['min' => 1, 'max' => 5, 'step' => 1],
+        'slider' => ['min' => 0, 'max' => 100, 'step' => 1],
+    ];
+
+    public const RANGE_LIMIT = 1000000;
+
+    /**
+     * Ratings and scales show one button per value, so they stay short.
+     */
+    public const MAX_RANGE_POINTS = 11;
+
+    public const MAX_MATRIX_ROWS = 20;
+
+    public const MAX_MATRIX_COLUMNS = 7;
+
+    public const CHECKBOX_VALUE = 'Ya';
+
+    /**
+     * Signatures are stored as PNG data URLs; this caps their length in characters.
+     */
+    public const MAX_SIGNATURE_LENGTH = 400000;
 
     public const CONDITION_OPERATORS = [
         'equals' => 'sama dengan',
@@ -60,7 +103,7 @@ class Survey extends Model
      */
     public const PREFILL_TYPES = ['short', 'long', 'number', 'currency', 'date', 'email', 'phone', 'code', 'single', 'dropdown'];
 
-    public const PLACEHOLDER_TYPES = ['short', 'long', 'number', 'currency', 'email', 'phone', 'dropdown'];
+    public const PLACEHOLDER_TYPES = ['short', 'long', 'number', 'currency', 'email', 'phone', 'url', 'dropdown'];
 
     public const REGION_FIELDS = [
         'provinsi' => 'Provinsi',
@@ -387,6 +430,36 @@ class Survey extends Model
     public function tableQuestions(): array
     {
         return array_values(array_filter($this->questions(), fn (array $question): bool => $question['type'] === 'table'));
+    }
+
+    /**
+     * The values a rating or scale question offers, lowest first.
+     *
+     * @param  array<string, mixed>  $question
+     * @return list<int>
+     */
+    public static function rangeValues(array $question): array
+    {
+        $range = $question['range'] ?? self::RANGE_DEFAULTS[$question['type']];
+
+        return range($range['min'], $range['max'], $range['step']);
+    }
+
+    /**
+     * Whether a value is a signature as drawn on the respondent form: a PNG data URL.
+     */
+    public static function isSignatureImage(mixed $value): bool
+    {
+        $prefix = 'data:image/png;base64,';
+
+        if (! is_string($value) || ! str_starts_with($value, $prefix)) {
+            return false;
+        }
+
+        $contents = base64_decode(substr($value, strlen($prefix)), true);
+        $image = $contents === false ? false : @getimagesizefromstring($contents);
+
+        return $image !== false && $image[2] === IMAGETYPE_PNG;
     }
 
     /**

@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
  */
 class FieldValidation
 {
-    private const TEXT = ['short', 'long', 'email', 'phone', 'code'];
+    private const TEXT = ['short', 'long', 'email', 'phone', 'url', 'code'];
 
     /**
      * @var array<string, array{label: string, types: list<string>, input: string}>

@@ -53,6 +53,11 @@ class SurveyResponse extends Model
 
         return match ($question['type']) {
             'currency' => self::formatRupiah($answer),
+            'signature' => '[tanda tangan]',
+            'matrix' => collect($question['matrix']['rows'])
+                ->filter(fn (string $row, int $index): bool => ($answer[$index] ?? '') !== '')
+                ->map(fn (string $row, int $index): string => $row.': '.$answer[$index])
+                ->implode('; '),
             'region' => collect(Survey::regionFields($question))
                 ->filter(fn (array $field): bool => isset($answer[$field['key']]))
                 ->map(fn (array $field): string => $field['label'].': '.$answer[$field['key']])

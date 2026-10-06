@@ -19,6 +19,8 @@
     const periodLabel = document.querySelector('#period-label');
     const choiceTypes = config.choiceTypes;
     const nonLogicTypes = config.nonLogicTypes;
+    const noCodeTypes = config.noCodeTypes;
+    const rangeTypes = Object.keys(config.rangeDefaults);
     const valueless = config.valuelessOperators;
 
     const blocks = restoreBlocks() ?? [makeBlock('KETERANGAN UMUM')];
@@ -50,6 +52,10 @@
         return { mode: 'dynamic', max_rows: 20, initial_rows: 3, rows: [], columns: [makeColumn('Kolom 1'), makeColumn('Kolom 2')] };
     }
 
+    function defaultMatrix() {
+        return { rows: ['Pernyataan 1', 'Pernyataan 2'], columns: ['Tidak setuju', 'Netral', 'Setuju'] };
+    }
+
     function emptyValidation() {
         return { rules: [], message: '', checks: [] };
     }
@@ -75,6 +81,8 @@
             validation: emptyValidation(),
             ...(type === 'region' ? { region: defaultRegion(), label: 'Identitas wilayah' } : {}),
             ...(type === 'table' ? { table: defaultTable() } : {}),
+            ...(rangeTypes.includes(type) ? { range: { ...config.rangeDefaults[type] } } : {}),
+            ...(type === 'matrix' ? { matrix: defaultMatrix() } : {}),
             ...overrides,
         };
     }
@@ -158,6 +166,22 @@
         };
     }
 
+    // Ratings always count from one star.
+    function normalizeRange(type, range) {
+        const defaults = config.rangeDefaults[type];
+        const isRating = type === 'rating';
+        return {
+            min: isRating ? 1 : clamp(range?.min, -config.rangeLimit, config.rangeLimit, defaults.min),
+            max: clamp(range?.max, -config.rangeLimit, config.rangeLimit, defaults.max),
+            step: isRating ? 1 : clamp(range?.step, 1, config.rangeLimit, defaults.step),
+        };
+    }
+
+    function normalizeMatrix(matrix) {
+        const list = values => (Array.isArray(values) ? values.map(String) : []);
+        return matrix ? { rows: list(matrix.rows), columns: list(matrix.columns) } : defaultMatrix();
+    }
+
     function normalizeQuestion(question) {
         // Older questions had a single "show when" condition: that is "hidden" plus logic that shows it.
         const legacy = question.condition?.question_id && !question.logic;
@@ -184,6 +208,8 @@
         };
         if (question.type === 'region') normalized.region = normalizeRegion(question.region);
         if (question.type === 'table') normalized.table = normalizeTable(question.table);
+        if (rangeTypes.includes(question.type)) normalized.range = normalizeRange(question.type, question.range);
+        if (question.type === 'matrix') normalized.matrix = normalizeMatrix(question.matrix);
         return normalized;
     }
 
@@ -625,6 +651,22 @@
             </div>`;
     }
 
+    function rangeValues(question) {
+        const { min, max, step } = question.range;
+        const values = [];
+        for (let value = min; value <= max && values.length < config.maxRangePoints; value += step) values.push(value);
+        return values;
+    }
+
+    function matrixPreview(question) {
+        const { rows, columns } = question.matrix;
+        if (!rows.length || columns.length < 2) return '<p class="block-empty">Tulis minimal satu baris dan dua kolom pilihan.</p>';
+        return `<table class="matrix-preview">
+            <thead><tr><td></td>${columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead>
+            <tbody>${rows.map(row => `<tr><th>${escapeHtml(row)}</th>${columns.map(() => '<td><i></i></td>').join('')}</tr>`).join('')}</tbody>
+        </table>`;
+    }
+
     function previewFor(question) {
         if (choiceTypes.includes(question.type)) {
             const options = question.options.length ? question.options : ['Pilihan 1', 'Pilihan 2'];
@@ -644,13 +686,20 @@
             case 'currency': return `<div class="answer-line"><b>Rp</b> ${escapeHtml(hint || '........................')}</div>`;
             case 'email': return `<div class="answer-line">${escapeHtml(hint || 'nama@contoh.go.id')}</div>`;
             case 'phone': return `<div class="answer-line">${escapeHtml(hint || '08xx-xxxx-xxxx')}</div>`;
+            case 'url': return `<div class="answer-line">${escapeHtml(hint || 'https://')}</div>`;
+            case 'checkbox': return '<span class="check-preview"><i></i> Ya</span>';
+            case 'rating': return `<div class="range-preview is-rating">${'<i>★</i>'.repeat(rangeValues(question).length)}</div>`;
+            case 'scale': return `<div class="range-preview">${rangeValues(question).map(value => `<i>${value}</i>`).join('')}</div>`;
+            case 'slider': return `<div class="range-preview is-slider">${question.range.min}<b></b>${question.range.max}</div>`;
+            case 'matrix': return matrixPreview(question);
+            case 'signature': return '<div class="sign-preview">Kotak tanda tangan responden</div>';
             default: return `<div class="answer-line">${escapeHtml(hint || 'Jawaban...')}</div>`;
         }
     }
 
     // Code boxes on the right of a question, with − / + to change how many there are.
     function codeBoxes(question) {
-        if (nonLogicTypes.includes(question.type)) return '<span class="code-field"></span>';
+        if (noCodeTypes.includes(question.type)) return '<span class="code-field"></span>';
         const length = question.code_length;
         return `
             <span class="code-field ${length ? '' : 'is-empty'}">
@@ -685,6 +734,10 @@
                     <span class="logic-slot">${logicBadge('question', question.id)}</span>
                     <div class="question-preview">${previewFor(question)}</div>
                     ${choiceTypes.includes(question.type) ? `<label class="option-editor"><span>PILIHAN</span><textarea data-field="options" aria-label="Pilihan jawaban, satu per baris" placeholder="Satu pilihan per baris">${escapeHtml(question.options.join('\n'))}</textarea></label>` : ''}
+                    ${question.type === 'matrix' ? `<div class="matrix-editor">
+                        <label class="option-editor"><span>BARIS</span><textarea data-field="matrix-rows" aria-label="Baris matriks, satu per baris" placeholder="Satu pernyataan per baris">${escapeHtml(question.matrix.rows.join('\n'))}</textarea></label>
+                        <label class="option-editor"><span>KOLOM</span><textarea data-field="matrix-columns" aria-label="Kolom pilihan matriks, satu per baris" placeholder="Satu pilihan per baris">${escapeHtml(question.matrix.columns.join('\n'))}</textarea></label>
+                    </div>` : ''}
                 </div>
                 ${codeBoxes(question)}
                 <div class="question-tools">
@@ -771,13 +824,25 @@
             <p class="setting-note">Judul, jenis, dan urutan kolom diatur langsung di tabel pada lembar.</p>`;
     }
 
+    function rangeSettings(question) {
+        const { min, max, step } = question.range;
+        const field = (key, label, value, lowest) => `<label class="setting-field"><span>${label}</span><input class="setting-select" type="number" min="${lowest}" max="${config.rangeLimit}" value="${value}" data-setting="range-${key}"></label>`;
+        if (question.type === 'rating') {
+            return `<div class="setting-label"><span>Rating</span><span class="setting-value">${max} BINTANG</span></div>${field('max', `Jumlah bintang <small>(2–${config.maxRangePoints})</small>`, max, 2)}`;
+        }
+        return `
+            <div class="setting-label"><span>Rentang nilai</span><span class="setting-value">${min}–${max}</span></div>
+            <div class="range-settings">${field('min', 'Terkecil', min, -config.rangeLimit)}${field('max', 'Terbesar', max, -config.rangeLimit)}${field('step', 'Kelipatan', step, 1)}</div>
+            ${question.type === 'scale' ? `<p class="setting-note">Skala menampilkan satu tombol per nilai, maksimal ${config.maxRangePoints} nilai.</p>` : ''}`;
+    }
+
     function flagButton(question, flag, label, icon) {
         return `<button class="flag-toggle" type="button" data-flag="${flag}" aria-pressed="${question[flag] ? 'true' : 'false'}"><span aria-hidden="true">${icon}</span>${label}</button>`;
     }
 
     function optionsTab(question) {
         const isInfo = question.type === 'info';
-        const hasCodeBoxes = !nonLogicTypes.includes(question.type);
+        const hasCodeBoxes = !noCodeTypes.includes(question.type);
         const prefill = config.prefillTypes.includes(question.type);
         const placeholder = config.placeholderTypes.includes(question.type);
         const prefillControl = ['single', 'dropdown'].includes(question.type)
@@ -801,6 +866,7 @@
                 <input class="setting-select" type="number" min="0" max="${config.maxCodeLength}" value="${question.code_length}" data-setting="code_length"></label>` : ''}
             ${question.type === 'region' ? `<div class="type-settings">${regionSettings(question)}</div>` : ''}
             ${question.type === 'table' ? `<div class="type-settings">${tableSettings(question)}</div>` : ''}
+            ${rangeTypes.includes(question.type) ? `<div class="type-settings">${rangeSettings(question)}</div>` : ''}
             <div class="option-section">
                 <div class="setting-label"><span>Kustomisasi</span></div>
                 ${isInfo ? '' : `<label class="required-toggle"><input type="checkbox" data-option="hide_label" ${question.hide_label ? 'checked' : ''}><span class="toggle-track"></span><span>Sembunyikan nama isian</span></label>`}
@@ -812,7 +878,7 @@
                     </div>
                 </div>
                 <label class="setting-field"><span>${isInfo ? 'Isi keterangan' : 'Teks bantuan'}</span><textarea class="setting-select setting-textarea" rows="3" maxlength="1000" data-option="description">${escapeHtml(question.description)}</textarea></label>
-                ${isInfo || ['region', 'table'].includes(question.type) ? '' : `<div class="setting-field"><span>Posisi teks bantuan</span>
+                ${isInfo || ['region', 'table', 'matrix'].includes(question.type) ? '' : `<div class="setting-field"><span>Posisi teks bantuan</span>
                     <div class="segmented">
                         <label><input class="sr-only" type="radio" name="help-${escapeHtml(question.id)}" value="below" data-option="help_position" ${question.help_position === 'below' ? 'checked' : ''}><span>Di bawah isian</span></label>
                         <label><input class="sr-only" type="radio" name="help-${escapeHtml(question.id)}" value="above" data-option="help_position" ${question.help_position === 'above' ? 'checked' : ''}><span>Di atas isian</span></label>
@@ -1038,10 +1104,11 @@
         if (choiceTypes.includes(type) && !question.options.length) question.options = ['Pilihan 1', 'Pilihan 2'];
         if (type === 'region' && !question.region) question.region = defaultRegion();
         if (type === 'table' && !question.table) question.table = defaultTable();
-        if (nonLogicTypes.includes(type)) {
-            question.code_length = 0;
-            clearConditionsOn([question.id]);
-        }
+        if (rangeTypes.includes(type)) question.range = { ...config.rangeDefaults[type] };
+        if (type === 'matrix' && !question.matrix) question.matrix = defaultMatrix();
+        if (noCodeTypes.includes(type)) question.code_length = 0;
+        if (nonLogicTypes.includes(type)) clearConditionsOn([question.id]);
+        if (!config.prefillTypes.includes(type)) question.prefill = '';
         if (type === 'info') {
             question.required = false;
             question.disabled = false;
@@ -1188,6 +1255,10 @@
             const mirror = panelField('description');
             if (mirror) mirror.value = event.target.value;
         }
+        if (field === 'matrix-rows' || field === 'matrix-columns') {
+            found.question.matrix[field === 'matrix-rows' ? 'rows' : 'columns'] = event.target.value.split('\n').map(line => line.trim()).filter(Boolean);
+            refreshPreview(found.question);
+        }
         if (field === 'options') {
             found.question.options = event.target.value.split('\n').map(option => option.trim()).filter(Boolean);
             refreshPreview(found.question);
@@ -1246,6 +1317,12 @@
         if ((regionField === 'code' || regionField === 'name') && target.tagName === 'INPUT') {
             const field = question.region.fields.find(item => item.key === target.closest('[data-region-key]').dataset.regionKey);
             field[regionField] = target.value;
+            refreshPreview(question);
+            return;
+        }
+        if (target.dataset.setting?.startsWith('range-')) {
+            const key = target.dataset.setting.slice('range-'.length);
+            question.range[key] = clamp(target.value, key === 'step' ? 1 : -config.rangeLimit, config.rangeLimit, question.range[key]);
             refreshPreview(question);
             return;
         }
@@ -1363,6 +1440,7 @@
             return;
         }
 
+        if (setting?.startsWith('range-')) return renderSelectionPanel();
         if (setting === 'code_length') target.value = question.code_length;
         if (setting === 'max_rows') {
             target.value = question.table.max_rows;
@@ -1696,6 +1774,18 @@
             if (question.table.columns.some(column => !column.label.trim())) return 'Judul kolom tabel belum diisi.';
             if (question.table.columns.some(column => column.type === 'choice' && !column.options.length)) return 'Kolom pilihan pada tabel belum memiliki opsi.';
             if (question.table.mode === 'fixed' && !question.table.rows.some(row => row.trim())) return 'Tabel baris tetap membutuhkan nama baris.';
+        }
+        if (rangeTypes.includes(question.type)) {
+            const { min, max, step } = question.range;
+            if (max <= min) return 'Nilai terbesar harus lebih dari nilai terkecil.';
+            if (step > max - min) return 'Kelipatan melebihi rentang nilai.';
+            if (question.type !== 'slider' && Math.floor((max - min) / step) + 1 > config.maxRangePoints) return `Maksimal ${config.maxRangePoints} pilihan nilai.`;
+        }
+        if (question.type === 'matrix') {
+            const { rows, columns } = question.matrix;
+            if (!rows.length || columns.length < 2) return 'Matriks membutuhkan minimal satu baris dan dua kolom pilihan.';
+            if (new Set(rows).size < rows.length || new Set(columns).size < columns.length) return 'Baris dan kolom matriks tidak boleh kembar.';
+            if (rows.length > config.maxMatrixRows || columns.length > config.maxMatrixColumns) return `Matriks maksimal ${config.maxMatrixRows} baris dan ${config.maxMatrixColumns} kolom.`;
         }
         return logicProblem(question) || validationProblemOf(question);
     }

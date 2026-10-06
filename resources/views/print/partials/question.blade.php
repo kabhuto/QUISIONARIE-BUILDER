@@ -6,7 +6,7 @@
     $choiceIndex = in_array($type, ['single', 'dropdown'], true) && $hasAnswer ? array_search($answer, $question['options'], true) : false;
     $codeValue = match (true) {
         $type === 'code' && $hasAnswer => (string) $answer,
-        $type === 'number' && $hasAnswer && ctype_digit((string) $answer) && strlen((string) $answer) <= $question['code_length'] => str_pad((string) $answer, $question['code_length'], ' ', STR_PAD_LEFT),
+        in_array($type, ['number', 'rating', 'scale', 'slider'], true) && $hasAnswer && ctype_digit((string) $answer) && strlen((string) $answer) <= $question['code_length'] => str_pad((string) $answer, $question['code_length'], ' ', STR_PAD_LEFT),
         $choiceIndex !== false => str_pad((string) ($choiceIndex + 1), $question['code_length'], ' ', STR_PAD_LEFT),
         default => '',
     };
@@ -35,6 +35,53 @@
             </td>
         </tr>
     @endforeach
+@elseif ($type === 'matrix')
+    <tr>
+        <td class="sheet-num">{{ $number }}.</td>
+        <td class="sheet-label" colspan="3">
+            {{ $question['label'] }}
+            @if ($question['description'] !== '')
+                <small>{{ $question['description'] }}</small>
+            @endif
+            <table class="sheet-subtable">
+                <thead>
+                    <tr>
+                        <th></th>
+                        @foreach ($question['matrix']['columns'] as $column)
+                            <th>{{ $column }}</th>
+                        @endforeach
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach ($question['matrix']['rows'] as $rowIndex => $row)
+                        <tr>
+                            <th>{{ $row }}</th>
+                            @foreach ($question['matrix']['columns'] as $column)
+                                <td><span @class(['sheet-mark', 'is-chosen' => ($answer[$rowIndex] ?? null) === $column])></span></td>
+                            @endforeach
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </td>
+    </tr>
+@elseif ($type === 'signature')
+    <tr>
+        <td class="sheet-num">{{ $number }}.</td>
+        <td class="sheet-label">
+            {{ $question['label'] }}
+            @if ($question['description'] !== '')
+                <small>{{ $question['description'] }}</small>
+            @endif
+        </td>
+        <td class="sheet-answer" colspan="2">
+            <span class="sheet-signature">
+                @if (\App\Models\Survey::isSignatureImage($answer))
+                    <img src="{{ $answer }}" alt="Tanda tangan">
+                @endif
+            </span>
+        </td>
+    </tr>
 @elseif ($type === 'table')
     @php
         $table = $question['table'];
@@ -95,6 +142,16 @@
                         <span @class(['is-chosen' => in_array($option, (array) $answer, true)])>{{ $optionIndex + 1 }}. {{ $option }}</span>
                     @endforeach
                 </span>
+            @elseif (in_array($type, ['rating', 'scale'], true))
+                <span class="sheet-options is-inline is-scale">
+                    @foreach (\App\Models\Survey::rangeValues($question) as $value)
+                        <span @class(['is-chosen' => $hasAnswer && (string) $answer === (string) $value])>{{ $value }}</span>
+                    @endforeach
+                </span>
+            @elseif ($type === 'checkbox')
+                <span class="sheet-check"><span @class(['sheet-mark', 'is-box', 'is-chosen' => $hasAnswer])></span> {{ \App\Models\Survey::CHECKBOX_VALUE }}</span>
+            @elseif ($type === 'slider' && ! $hasAnswer)
+                <span class="sheet-line"></span><small>Isi angka {{ $question['range']['min'] }}–{{ $question['range']['max'] }}</small>
             @elseif ($type === 'date')
                 @if ($hasAnswer)
                     <span class="sheet-value">{{ \Illuminate\Support\Carbon::parse($answer)->translatedFormat('d F Y') }}</span>

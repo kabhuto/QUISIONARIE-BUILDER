@@ -71,6 +71,33 @@
                     </div>
                 </div>
             @endforeach
+        @elseif ($type === 'matrix')
+            <div class="cawi-q cawi-q-wide">
+                <span @class(['fill-label', $labelClass])><span class="cawi-number">{{ $number }}.</span> {{ $question['label'] }}{!! $required !!}</span>
+                {!! $help !!}
+            </div>
+            <div class="cawi-table-wrap">
+                <table class="cawi-table cawi-matrix">
+                    <thead>
+                        <tr>
+                            <td></td>
+                            @foreach ($question['matrix']['columns'] as $column)
+                                <th scope="col">{{ $column }}</th>
+                            @endforeach
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($question['matrix']['rows'] as $rowIndex => $row)
+                            <tr data-matrix-row>
+                                <th class="cawi-row-head" scope="row">{{ $row }}</th>
+                                @foreach ($question['matrix']['columns'] as $column)
+                                    <td><input type="radio" name="{{ $name }}[{{ $rowIndex }}]" value="{{ $column }}" aria-label="{{ $row }}: {{ $column }}" @checked(($old[$rowIndex] ?? null) === $column)></td>
+                                @endforeach
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
         @elseif ($type === 'table')
             @php
                 $table = $question['table'];
@@ -123,7 +150,7 @@
         @else
             <div class="cawi-row">
                 <div class="cawi-q">
-                    <label @class(['fill-label', $labelClass]) @unless (in_array($type, ['single', 'multiple', 'code'], true)) for="{{ $inputId }}" @endunless id="{{ $inputId }}-label">
+                    <label @class(['fill-label', $labelClass]) @unless (in_array($type, ['single', 'multiple', 'code', 'rating', 'scale', 'signature'], true)) for="{{ $inputId }}" @endunless id="{{ $inputId }}-label">
                         <span class="cawi-number">{{ $number }}.</span> {{ $question['label'] }}{!! $required !!}
                     </label>
                 </div>
@@ -149,6 +176,44 @@
                             @break
                         @case('phone')
                             <input class="fill-input cawi-short" id="{{ $inputId }}" name="{{ $name }}" type="tel" maxlength="20" autocomplete="tel" value="{{ $old }}" placeholder="{{ $placeholder }}">
+                            @break
+                        @case('url')
+                            <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="url" maxlength="500" inputmode="url" value="{{ $old }}" placeholder="{{ $placeholder ?: 'https://' }}">
+                            @break
+                        @case('checkbox')
+                            <label class="cawi-option cawi-tick"><input type="checkbox" id="{{ $inputId }}" name="{{ $name }}" value="{{ \App\Models\Survey::CHECKBOX_VALUE }}" @checked($old === \App\Models\Survey::CHECKBOX_VALUE)><span>{{ \App\Models\Survey::CHECKBOX_VALUE }}</span></label>
+                            @break
+                        @case('rating')
+                        @case('scale')
+                            <div @class(['cawi-range', 'is-rating' => $type === 'rating']) role="radiogroup" aria-labelledby="{{ $inputId }}-label">
+                                @foreach (\App\Models\Survey::rangeValues($question) as $value)
+                                    <label title="{{ $value }}"><input class="sr-only" type="radio" name="{{ $name }}" value="{{ $value }}" @checked((string) $old === (string) $value)><span>{{ $type === 'rating' ? '★' : $value }}</span></label>
+                                @endforeach
+                            </div>
+                            @break
+                        @case('slider')
+                            @php
+                                $range = $question['range'];
+                                $hasValue = is_numeric($old);
+                            @endphp
+                            <div class="cawi-slider" data-slider>
+                                <span class="cawi-slider-bound">{{ $range['min'] }}</span>
+                                <input type="range" id="{{ $inputId }}" min="{{ $range['min'] }}" max="{{ $range['max'] }}" step="{{ $range['step'] }}" value="{{ $hasValue ? $old : $range['min'] }}" data-slider-range>
+                                <span class="cawi-slider-bound">{{ $range['max'] }}</span>
+                                <output class="cawi-slider-value" for="{{ $inputId }}" data-slider-output>{{ $hasValue ? $old : '—' }}</output>
+                                <button class="link-button" type="button" data-slider-clear @unless ($hasValue) hidden @endunless>Hapus</button>
+                                <input type="hidden" name="{{ $name }}" value="{{ $hasValue ? $old : '' }}">
+                            </div>
+                            @break
+                        @case('signature')
+                            <div class="sign-pad" data-signature>
+                                <canvas width="600" height="200" role="img" aria-labelledby="{{ $inputId }}-label"></canvas>
+                                <div class="sign-pad-foot">
+                                    <span>Tanda tangani di dalam kotak dengan mouse, jari, atau stylus.</span>
+                                    <button class="link-button" type="button" data-signature-clear>Hapus</button>
+                                </div>
+                                <input type="hidden" name="{{ $name }}" value="{{ is_string($old) ? $old : '' }}">
+                            </div>
                             @break
                         @case('code')
                             @if ($question['code_length'] > 0)

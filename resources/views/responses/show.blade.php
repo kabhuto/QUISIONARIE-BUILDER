@@ -64,6 +64,20 @@
                                         </tbody>
                                     </table>
                                 </dd>
+                            @elseif ($question['type'] === 'signature')
+                                <dd>
+                                    @if (\App\Models\Survey::isSignatureImage($answer))
+                                        <img class="detail-signature" src="{{ $answer }}" alt="Tanda tangan responden">
+                                    @else
+                                        {{ $response->displayAnswer($question) }}
+                                    @endif
+                                </dd>
+                            @elseif ($question['type'] === 'matrix')
+                                <dd>
+                                    @foreach ($question['matrix']['rows'] as $rowIndex => $row)
+                                        <div><small class="muted">{{ $row }}:</small> {{ ($answer[$rowIndex] ?? '') ?: '—' }}</div>
+                                    @endforeach
+                                </dd>
                             @elseif ($question['type'] === 'region')
                                 <dd>
                                     @foreach (\App\Models\Survey::regionFields($question) as $field)

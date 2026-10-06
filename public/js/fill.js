@@ -30,8 +30,9 @@
     function answerOf(question) {
         const type = question.dataset.type;
         if (type === 'multiple') return [...question.querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value);
-        if (type === 'single') return question.querySelector('input[type="radio"]:checked')?.value ?? '';
-        if (type === 'region' || type === 'table') {
+        if (type === 'single' || type === 'rating' || type === 'scale') return question.querySelector('input[type="radio"]:checked')?.value ?? '';
+        if (type === 'checkbox') return question.querySelector('input[type="checkbox"]:checked')?.value ?? '';
+        if (type === 'region' || type === 'table' || type === 'matrix') {
             const filled = [...question.querySelectorAll('input:not([type="radio"]):not([type="hidden"]), select, input[type="radio"]:checked')].some(field => fieldValue(field) !== '');
             return filled ? ['filled'] : [];
         }
@@ -296,6 +297,80 @@
 
     form.querySelectorAll('[data-currency]').forEach(formatRupiah);
 
+    // A slider only holds an answer once the respondent has touched it; until then it shows "—".
+    function syncSlider(slider) {
+        const value = slider.querySelector('input[type="hidden"]').value;
+        if (value !== '') slider.querySelector('[data-slider-range]').value = value;
+        slider.querySelector('[data-slider-output]').textContent = value === '' ? '—' : value;
+        slider.querySelector('[data-slider-clear]').hidden = value === '';
+    }
+
+    function setSlider(slider, value) {
+        slider.querySelector('input[type="hidden"]').value = value;
+        syncSlider(slider);
+    }
+
+    // ── Signature pads ─────────────────────────────────────────────────────
+    // The drawing is kept as a PNG data URL in the pad's hidden input.
+
+    function drawSignature(pad) {
+        const canvas = pad.querySelector('canvas');
+        const context = canvas.getContext('2d');
+        const value = pad.querySelector('input[type="hidden"]').value;
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        if (!value.startsWith('data:image/png;base64,')) return;
+        const image = new Image();
+        image.onload = () => context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        image.src = value;
+    }
+
+    form.querySelectorAll('[data-signature]').forEach(pad => {
+        const canvas = pad.querySelector('canvas');
+        const hidden = pad.querySelector('input[type="hidden"]');
+        const context = canvas.getContext('2d');
+        let drawing = false;
+
+        // The canvas is scaled by CSS, so pointer positions are mapped back to its own pixels.
+        const point = event => {
+            const bounds = canvas.getBoundingClientRect();
+            return [(event.clientX - bounds.left) * canvas.width / bounds.width, (event.clientY - bounds.top) * canvas.height / bounds.height];
+        };
+        const finish = () => {
+            if (!drawing) return;
+            drawing = false;
+            hidden.value = canvas.toDataURL('image/png');
+            hidden.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+
+        canvas.addEventListener('pointerdown', event => {
+            if (hidden.disabled) return;
+            event.preventDefault();
+            drawing = true;
+            canvas.setPointerCapture(event.pointerId);
+            Object.assign(context, { lineWidth: 2.5, lineCap: 'round', lineJoin: 'round', strokeStyle: '#111' });
+            const [x, y] = point(event);
+            context.beginPath();
+            context.moveTo(x, y);
+            // A tap without movement still leaves a dot.
+            context.lineTo(x + 0.01, y);
+            context.stroke();
+        });
+        canvas.addEventListener('pointermove', event => {
+            if (!drawing) return;
+            context.lineTo(...point(event));
+            context.stroke();
+        });
+        canvas.addEventListener('pointerup', finish);
+        canvas.addEventListener('pointercancel', finish);
+        pad.querySelector('[data-signature-clear]').addEventListener('click', () => {
+            hidden.value = '';
+            drawSignature(pad);
+            hidden.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+
+        drawSignature(pad);
+    });
+
     // ── Tables with respondent-added rows ──────────────────────────────────
 
     function renumberRows(table) {
@@ -333,6 +408,15 @@
             scheduleDraft();
             return;
         }
+        // Clicking a slider where its handle already sits is an answer too, though nothing moves.
+        const sliderRange = event.target.closest('[data-slider-range]');
+        const sliderClear = event.target.closest('[data-slider-clear]');
+        if (sliderRange || sliderClear) {
+            setSlider(event.target.closest('[data-slider]'), sliderRange ? sliderRange.value : '');
+            applyLogic();
+            scheduleDraft();
+            return;
+        }
         const removeButton = event.target.closest('[data-remove-row]');
         if (removeButton) {
             const table = removeButton.closest('.cawi-table');
@@ -366,12 +450,17 @@
         if (type === 'table') {
             return required && !isAnswered(answerOf(question)) ? 'Isi minimal satu baris.' : '';
         }
+        if (type === 'matrix') {
+            const unanswered = [...question.querySelectorAll('[data-matrix-row]')].some(row => !row.querySelector('input:checked'));
+            return required && unanswered ? 'Pilih jawaban pada setiap baris.' : '';
+        }
 
         const answer = answerOf(question);
         if (!isAnswered(answer)) return required ? 'Pertanyaan ini wajib diisi.' : consistencyProblem(question);
         if (type === 'number' && Number.isNaN(Number(answer))) return 'Isi dengan angka.';
         if (type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answer)) return 'Isi dengan alamat email yang valid.';
         if (type === 'phone' && !/^[0-9+\-\s().]{6,20}$/.test(answer)) return 'Isi dengan nomor telepon yang valid.';
+        if (type === 'url' && !/^https?:\/\/\S+$/i.test(answer)) return 'Isi dengan tautan yang diawali http:// atau https://.';
         const codeDigits = question.querySelectorAll('.code-digit').length;
         if (codeDigits && !new RegExp(`^\\d{${codeDigits}}$`).test(answer)) return `Isi ${codeDigits} digit angka.`;
         const maxLength = Number(question.dataset.maxLength || 0);
@@ -449,6 +538,8 @@
         });
         form.querySelectorAll('.code-input').forEach(syncCodeDigits);
         form.querySelectorAll('[data-currency]').forEach(formatRupiah);
+        form.querySelectorAll('[data-slider]').forEach(syncSlider);
+        form.querySelectorAll('[data-signature]').forEach(drawSignature);
 
         const savedAt = new Date(draft.savedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
         if (draftStatus) draftStatus.innerHTML = `Melanjutkan draf ${savedAt}. <button type="button" class="link-button" data-clear-draft>Mulai ulang</button>`;
@@ -465,6 +556,7 @@
 
     form.addEventListener('input', event => {
         if (event.target.matches('[data-currency]')) formatRupiah(event.target);
+        if (event.target.matches('[data-slider-range]')) setSlider(event.target.closest('[data-slider]'), event.target.value);
         const question = event.target.closest('.fill-question');
         if (question?.classList.contains('has-error')) setError(question, '');
         applyLogic();

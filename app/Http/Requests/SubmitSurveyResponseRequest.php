@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Models\Survey;
 use App\Support\FieldValidation;
 use App\Support\SurveyLogic;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -136,10 +137,27 @@ class SubmitSurveyResponseRequest extends FormRequest
                 continue;
             }
 
+            if ($question['type'] === 'matrix') {
+                $rules[$key] = ['nullable', 'array'];
+                $rules["{$key}.*"] = ['nullable', 'string', Rule::in($question['matrix']['columns'])];
+
+                continue;
+            }
+
+            if (in_array($question['type'], Survey::RANGE_TYPES, true)) {
+                $range = $question['range'];
+                $rules[$key] = [$presence, 'integer', "between:{$range['min']},{$range['max']}", $this->stepRule($question)];
+
+                continue;
+            }
+
             $maxLength = fn (int $limit): string => 'max:'.min($limit, $question['max_length'] ?: $limit);
 
             $rules[$key] = match ($question['type']) {
                 'long' => [$presence, 'string', $maxLength(5000)],
+                'url' => [$presence, 'url:http,https', 'max:500'],
+                'checkbox' => [$presence, 'string', Rule::in([Survey::CHECKBOX_VALUE])],
+                'signature' => [$presence, 'string', 'max:'.Survey::MAX_SIGNATURE_LENGTH, $this->signatureRule($question)],
                 'number' => [$presence, 'numeric'],
                 'currency' => [$presence, 'digits_between:1,18'],
                 'date' => [$presence, 'date'],
@@ -162,7 +180,36 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
-     * Required tables need a filled cell; the builder's "Validasi" rules run once the basics pass.
+     * Range answers must sit on one of the steps the question offers.
+     *
+     * @param  array<string, mixed>  $question
+     */
+    private function stepRule(array $question): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail) use ($question): void {
+            $range = $question['range'];
+
+            if (is_numeric($value) && ((int) $value - $range['min']) % $range['step'] !== 0) {
+                $fail("{$question['label']} harus kelipatan {$range['step']} dari {$range['min']}.");
+            }
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $question
+     */
+    private function signatureRule(array $question): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail) use ($question): void {
+            if (! Survey::isSignatureImage($value)) {
+                $fail("{$question['label']} tidak terbaca. Ulangi tanda tangan.");
+            }
+        };
+    }
+
+    /**
+     * Required tables need a filled cell and required matrices an answer on every row;
+     * the builder's "Validasi" rules run once the basics pass.
      *
      * @return array<int, callable>
      */
@@ -175,6 +222,10 @@ class SubmitSurveyResponseRequest extends FormRequest
 
                     if ($question['type'] === 'table' && $this->isRequired($question) && $this->tableRows($question) === []) {
                         $validator->errors()->add($key, $question['label'].' wajib diisi minimal satu baris.');
+                    }
+
+                    if ($question['type'] === 'matrix' && $this->isRequired($question) && in_array('', $this->matrixAnswer($question) ?: [''], true)) {
+                        $validator->errors()->add($key, $question['label'].' wajib diisi pada setiap baris.');
                     }
 
                     if ($validator->errors()->has($key) || $validator->errors()->has($key.'.*')) {
@@ -246,6 +297,10 @@ class SubmitSurveyResponseRequest extends FormRequest
             foreach ($question['table']['columns'] ?? [] as $column) {
                 $attributes["{$key}.*.{$column['id']}"] = $question['label'].' – '.$column['label'];
             }
+
+            foreach ($question['matrix']['rows'] ?? [] as $index => $row) {
+                $attributes["{$key}.{$index}"] = $question['label'].' – '.$row;
+            }
         }
 
         return $attributes;
@@ -262,6 +317,9 @@ class SubmitSurveyResponseRequest extends FormRequest
             'required' => ':attribute wajib diisi.',
             'min' => ':attribute wajib diisi.',
             'numeric' => ':attribute harus berupa angka.',
+            'integer' => ':attribute harus berupa bilangan bulat.',
+            'between' => ':attribute harus di antara :min dan :max.',
+            'url' => ':attribute harus berupa tautan yang diawali http:// atau https://.',
             'date' => ':attribute harus berupa tanggal yang valid.',
             'digits' => ':attribute harus berisi :digits digit angka.',
             'digits_between' => ':attribute harus berupa nominal Rupiah yang valid.',
@@ -298,6 +356,7 @@ class SubmitSurveyResponseRequest extends FormRequest
             $answer = match ($question['type']) {
                 'region' => $this->regionAnswer($question, (array) ($submitted[$question['id']] ?? [])),
                 'table' => $this->tableRows($question),
+                'matrix' => $this->matrixAnswer($question),
                 'multiple' => array_values(array_intersect($question['options'], (array) ($submitted[$question['id']] ?? []))),
                 default => trim((string) ($submitted[$question['id']] ?? '')),
             };
@@ -336,6 +395,24 @@ class SubmitSurveyResponseRequest extends FormRequest
         $hasInputFields = collect(Survey::regionFields($question))->contains('mode', 'input');
 
         return $hasInput || ! $hasInputFields ? $answer : [];
+    }
+
+    /**
+     * The chosen column of each matrix row, in row order; unanswered rows stay empty strings.
+     *
+     * @param  array<string, mixed>  $question
+     * @return list<string>
+     */
+    private function matrixAnswer(array $question): array
+    {
+        $submitted = (array) ($this->input('answers.'.$question['id']) ?? []);
+        $answer = [];
+
+        foreach (array_keys($question['matrix']['rows']) as $index) {
+            $answer[] = is_scalar($submitted[$index] ?? null) ? trim((string) $submitted[$index]) : '';
+        }
+
+        return implode('', $answer) === '' ? [] : $answer;
     }
 
     /**

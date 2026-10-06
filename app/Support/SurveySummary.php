@@ -50,7 +50,7 @@ class SurveySummary
                 ]);
             }
 
-            if (in_array($question['type'], ['number', 'currency'], true) && $answers->isNotEmpty()) {
+            if (in_array($question['type'], Survey::NUMERIC_TYPES, true) && $answers->isNotEmpty()) {
                 $numbers = $answers->map(fn ($answer): float => (float) $answer);
                 $format = $question['type'] === 'currency'
                     ? fn (float $value): string => SurveyResponse::formatRupiah($value)

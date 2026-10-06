@@ -325,3 +325,20 @@ body{background:#fff}.topbar,.page-intro,.toolbox,.settings-panel,.editor-toolba
 .vrule{display:flex;flex-direction:column;gap:4px;padding:6px;margin-bottom:6px;border:1px solid #e6eeeb;border-radius:3px;background:#fff}
 .toast-info{background:#176e62}
 @media(max-width:1180px){.builder-grid{grid-template-columns:210px minmax(420px,1fr)}.settings-panel{display:block}}
+
+/* Range, matrix, checkbox and signature previews */
+.range-preview{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.range-preview i{display:grid;place-items:center;min-width:22px;height:22px;padding:0 4px;border:1px solid #d6e2de;border-radius:3px;background:#fff;font-style:normal;font-family:var(--mono);font-size:9px;color:#58716b}
+.range-preview.is-rating i{border:0;background:none;min-width:0;padding:0;font-size:16px;color:#e0a23c}
+.range-preview.is-slider{max-width:260px;gap:8px;font-family:var(--mono);font-size:9px;color:#58716b}
+.range-preview.is-slider b{flex:1;height:4px;border-radius:2px;background:linear-gradient(90deg,#81b5a8 40%,#dfe8e5 40%)}
+.matrix-preview{border-collapse:collapse;font-size:9px;color:#58716b}
+.matrix-preview th,.matrix-preview td{border:1px solid #e3ebe8;padding:4px 8px;text-align:center;font-weight:500}
+.matrix-preview tbody th{text-align:left;color:#1d3d3a}
+.matrix-preview td i{display:inline-block;width:9px;height:9px;border:1px solid #8aa59e;border-radius:50%}
+.matrix-editor{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sign-preview{display:grid;place-items:center;max-width:240px;height:64px;border:1px dashed #b9cbc5;border-radius:4px;background:#fcfdfd;font-size:9px;color:#94a59f}
+.check-preview{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:#58716b}
+.check-preview i{width:12px;height:12px;border:1px solid #6d8c85;background:#fff}
+.range-settings{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+@media print{.matrix-editor{display:none}}
