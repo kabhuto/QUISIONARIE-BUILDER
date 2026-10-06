@@ -100,3 +100,6 @@ body.print-page{background:#fff}
 .sheet-topline{display:grid;grid-template-columns:repeat(3,1fr);align-items:center;margin-bottom:6px;font-size:9.5px}
 .sheet-topline>.is-left{text-align:left}.sheet-topline>.is-center{text-align:center}.sheet-topline>.is-right{text-align:right}
 .sheet-topline-text{letter-spacing:.6px;text-transform:uppercase}
+
+/* Vertical alignment of the kop columns */
+.kop.kop-align-top{align-items:start}.kop.kop-align-bottom{align-items:end}

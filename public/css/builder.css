@@ -250,3 +250,17 @@ body{background:#fff}.topbar,.page-intro,.toolbox,.settings-panel,.editor-toolba
 .rule-chip input{field-sizing:content;min-width:10ch;max-width:100%}
 /* Size chip inputs to their text so "FORMULIR PENDATAAN" is never cut off. */
 .rule-chip input,.paper-topline .rule-chip input.form-code,.paper-rule .rule-chip .sheet-label-input{width:auto;flex:0 1 auto}
+
+/* Vertical nudge for kop items */
+.kop-offset{display:flex;flex-direction:column;gap:4px;padding-top:6px;border-top:1px dashed #e1e9e6}
+.kop-offset-buttons{display:flex;gap:4px}
+.kop-offset-buttons .mini-button{min-width:28px;justify-content:center}
+.kop-slot{position:relative}
+.kop-logo-placeholder.is-empty{position:absolute;top:-16px;display:inline-grid;height:14px;padding:0 6px;font-size:7px;opacity:.8}
+.kop-left>.kop-logo-placeholder.is-empty{left:0}.kop-right>.kop-logo-placeholder.is-empty{right:0}
+
+/* Vertical alignment of the kop columns */
+.kop.kop-align-top{align-items:start}.kop.kop-align-bottom{align-items:end}
+.kop-align{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px;font-size:10px;color:#4e6964}
+.kop-align small{flex-basis:100%;color:#8a9b97;font-size:9px}
+.kop-align .mini-button[aria-pressed="true"]{background:var(--teal);border-color:var(--teal);color:#fff}

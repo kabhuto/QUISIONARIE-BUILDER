@@ -68,6 +68,8 @@ class Survey extends Model
 
     public const HEADER_SLOTS = ['left' => 'Kiri', 'center' => 'Tengah', 'right' => 'Kanan'];
 
+    public const HEADER_ALIGNMENTS = ['top' => 'Atas', 'center' => 'Tengah', 'bottom' => 'Bawah'];
+
     public const HEADER_ITEM_TYPES = ['logo' => 'Logo', 'text' => 'Teks', 'badge' => 'Label'];
 
     public const BADGE_STYLES = [
@@ -220,6 +222,14 @@ class Survey extends Model
     }
 
     /**
+     * How the left, centre and right kop columns line up vertically.
+     */
+    public function headerAlign(): string
+    {
+        return array_key_exists($this->header['align'] ?? '', self::HEADER_ALIGNMENTS) ? $this->header['align'] : 'center';
+    }
+
+    /**
      * @return array<string, list<array<string, mixed>>>
      */
     public function headerSlots(): array
@@ -246,6 +256,7 @@ class Survey extends Model
             'style' => $type === 'badge' ? 'dark' : 'bold',
             'path' => null,
             'height' => 64,
+            'offset' => 0,
             ...$attributes,
         ];
 

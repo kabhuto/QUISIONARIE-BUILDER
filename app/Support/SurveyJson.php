@@ -33,7 +33,7 @@ class SurveyJson
                 'subtitle' => $survey->subtitle,
                 'activity' => $survey->activity,
                 'settings' => $survey->formSettings(),
-                'header' => ['items' => $survey->headerItems()],
+                'header' => ['align' => $survey->headerAlign(), 'items' => $survey->headerItems()],
                 'intro' => $survey->formIntro(),
                 'blocks' => $survey->blocks,
             ],

@@ -96,6 +96,8 @@ class SurveyController extends Controller
             ],
             'headerConfig' => [
                 'items' => $survey->headerItems(),
+                'align' => $survey->headerAlign(),
+                'alignments' => Survey::HEADER_ALIGNMENTS,
                 'slots' => Survey::HEADER_SLOTS,
                 'itemTypes' => Survey::HEADER_ITEM_TYPES,
                 'badgeStyles' => Survey::BADGE_STYLES,

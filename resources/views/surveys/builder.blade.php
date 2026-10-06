@@ -17,7 +17,7 @@
     ];
     $isNew = ! $survey->exists;
     $oldBlocks = old('blocks', json_encode($survey->blocks ?? []));
-    $oldHeader = old('header', json_encode(['items' => $survey->headerItems()]));
+    $oldHeader = old('header', json_encode(['align' => $survey->headerAlign(), 'items' => $survey->headerItems()]));
     $isConfidential = (bool) old('settings.confidential', $settings['confidential']);
     $selectedPaperSize = old('settings.paper_size', $settings['paper_size']);
     $selectedOrientation = old('settings.orientation', $settings['orientation']);
@@ -278,6 +278,13 @@
                     <div class="kop-live" id="kop-dialog-preview" aria-label="Pratinjau kop"></div>
                     <p class="panel-hint">Tarik ⠿ untuk memindahkan logo, teks, atau label ke kiri, tengah, atau kanan. <b>Seret file gambar dari komputer</b> ke kolom mana pun untuk menambah logo, atau ke kartu logo untuk menggantinya. Hapus label (mis. CAWI) dengan tombol ×.</p>
                     <p class="kop-status" id="kop-status" role="status" aria-live="polite"></p>
+                    <div class="kop-align" role="group" aria-label="Perataan tegak kolom kop">
+                        <span>Perataan tegak kolom:</span>
+                        @foreach (\App\Models\Survey::HEADER_ALIGNMENTS as $alignment => $label)
+                            <button class="mini-button" type="button" data-kop-align="{{ $alignment }}" aria-pressed="false">{{ $label }}</button>
+                        @endforeach
+                        <small>Pilih <b>Bawah</b> agar label di kiri dan kanan (mis. RAHASIA dan CAWI) sejajar meski salah satunya di bawah logo.</small>
+                    </div>
                     <div class="kop-slots" id="kop-slots"></div>
                 </section>
 

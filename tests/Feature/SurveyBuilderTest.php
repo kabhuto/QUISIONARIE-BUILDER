@@ -294,6 +294,45 @@ class SurveyBuilderTest extends TestCase
             ->assertSessionHasErrors('blocks.1.questions.2.table');
     }
 
+    public function test_kop_items_can_be_nudged_up_or_down(): void
+    {
+        $this->post(route('surveys.store'), $this->validPayload(headerItems: [
+            ['id' => 'h-1', 'type' => 'badge', 'slot' => 'left', 'text' => 'RAHASIA', 'style' => 'dark'],
+            ['id' => 'h-2', 'type' => 'badge', 'slot' => 'right', 'text' => 'CAWI', 'style' => 'orange', 'offset' => -36],
+        ]))->assertSessionHasNoErrors();
+        $survey = Survey::query()->firstOrFail();
+        $survey->update(['published_at' => now()]);
+
+        $this->assertSame([0, -36], array_column($survey->header['items'], 'offset'));
+        $html = $this->get(route('form.create', $survey))->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/<span class="kop-badge is-dark"\s*>RAHASIA<\/span>/', $html);
+        $this->assertMatchesRegularExpression('/<span class="kop-badge is-orange"\s*style="transform: translateY\(-36px\);"\s*>CAWI<\/span>/', $html);
+
+        $this->post(route('surveys.store'), $this->validPayload(headerItems: [
+            ['id' => 'h-1', 'type' => 'badge', 'slot' => 'left', 'text' => 'RAHASIA', 'offset' => 200],
+        ]))->assertSessionHasErrors('header.items.0.offset');
+    }
+
+    public function test_kop_columns_can_be_aligned_to_the_bottom(): void
+    {
+        $header = ['align' => 'bottom', 'items' => [
+            ['id' => 'h-1', 'type' => 'badge', 'slot' => 'left', 'text' => 'RAHASIA', 'style' => 'dark'],
+            ['id' => 'h-2', 'type' => 'badge', 'slot' => 'right', 'text' => 'CAWI', 'style' => 'orange'],
+        ]];
+        $this->post(route('surveys.store'), $this->validPayload(['header' => json_encode($header)]))->assertSessionHasNoErrors();
+        $survey = Survey::query()->firstOrFail();
+        $survey->update(['published_at' => now()]);
+
+        $this->assertSame('bottom', $survey->headerAlign());
+        $this->get(route('form.create', $survey))->assertSee('kop kop-align-bottom', false);
+        $this->get(route('surveys.print', $survey))->assertSee('kop kop-align-bottom', false);
+        $this->get(route('surveys.edit', $survey))->assertSee('data-kop-align="bottom"', false);
+
+        $header['align'] = 'diagonal';
+        $this->post(route('surveys.store'), $this->validPayload(['header' => json_encode($header)]))
+            ->assertSessionHasErrors('header.align');
+    }
+
     public function test_kop_items_are_validated(): void
     {
         $this->post(route('surveys.store'), $this->validPayload(headerItems: [

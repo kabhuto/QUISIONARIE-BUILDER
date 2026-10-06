@@ -73,6 +73,7 @@ class StoreSurveyRequest extends FormRequest
             'settings.form_code_position' => ['nullable', Rule::in(array_keys(Survey::HEADER_SLOTS))],
 
             'header' => ['required', 'array'],
+            'header.align' => ['nullable', Rule::in(array_keys(Survey::HEADER_ALIGNMENTS))],
             'header.items' => ['present', 'array', 'max:15'],
             'header.items.*.id' => ['required', 'string', 'max:40', self::ID_PATTERN, 'distinct'],
             'header.items.*.type' => ['required', Rule::in(array_keys(Survey::HEADER_ITEM_TYPES))],
@@ -81,6 +82,7 @@ class StoreSurveyRequest extends FormRequest
             'header.items.*.style' => ['nullable', 'string', Rule::in(['bold', 'normal', ...array_keys(Survey::BADGE_STYLES)])],
             'header.items.*.path' => ['nullable', 'string', self::LOGO_PATTERN],
             'header.items.*.height' => ['nullable', 'integer', 'between:24,140'],
+            'header.items.*.offset' => ['nullable', 'integer', 'between:-80,80'],
 
             'intro.text' => ['nullable', 'string', 'max:2000'],
             'intro.help_title' => ['nullable', 'string', 'max:160'],
@@ -290,6 +292,7 @@ class StoreSurveyRequest extends FormRequest
                 'form_code_position' => $settings['form_code_position'] ?? 'right',
             ],
             'header' => [
+                'align' => $this->validated('header.align') ?? 'center',
                 'items' => collect($this->validated('header.items'))->map(fn (array $item): array => [
                     'id' => $item['id'],
                     'type' => $item['type'],
@@ -298,6 +301,7 @@ class StoreSurveyRequest extends FormRequest
                     'style' => $item['style'] ?? ($item['type'] === 'badge' ? 'dark' : 'bold'),
                     'path' => $item['type'] === 'logo' ? ($item['path'] ?? null) : null,
                     'height' => (int) ($item['height'] ?? 64),
+                    'offset' => (int) ($item['offset'] ?? 0),
                 ])->values()->all(),
             ],
             'intro' => collect(array_keys(Survey::DEFAULT_INTRO))

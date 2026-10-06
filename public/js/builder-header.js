@@ -10,6 +10,7 @@
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
     const items = restoreItems();
+    let align = restoreAlign();
     let draggedItemId = null;
     let logoLibrary = null;
 
@@ -37,14 +38,25 @@
                     style: String(item.style ?? (item.type === 'badge' ? 'dark' : 'bold')),
                     path: item.path || null,
                     height: Number(item.height) || 64,
+                    offset: Math.max(-80, Math.min(80, Number(item.offset) || 0)),
                 }));
         } catch {
             return [...config.items];
         }
     }
 
+    function restoreAlign() {
+        try {
+            const parsed = JSON.parse(payload.value || 'null');
+            return config.alignments[parsed?.align] ? parsed.align : (config.align || 'center');
+        } catch {
+            return config.align || 'center';
+        }
+    }
+
     function save() {
-        payload.value = JSON.stringify({ items });
+        payload.value = JSON.stringify({ align, items });
+        dialog.querySelectorAll('[data-kop-align]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.kopAlign === align)));
         renderPreviews();
     }
 
@@ -54,16 +66,18 @@
 
     // Kop rendering shared by the paper and the dialog preview.
     function renderKop(target, { placeholders }) {
-        target.innerHTML = `<div class="kop">${Object.keys(config.slots).map(slot => `
+        target.innerHTML = `<div class="kop kop-align-${align}">${Object.keys(config.slots).map(slot => `
             <div class="kop-slot kop-${slot}">
                 ${items.filter(item => item.slot === slot).map(item => {
+                    const shift = item.offset ? `transform:translateY(${item.offset}px);` : '';
                     if (item.type === 'logo') {
-                        if (item.path) return `<img class="kop-logo" src="${escapeHtml(logoUrl(item.path))}" style="height:${item.height}px" alt="">`;
-                        return placeholders ? `<span class="kop-logo-placeholder" style="height:${item.height}px;width:${item.height}px">LOGO</span>` : '';
+                        if (item.path) return `<img class="kop-logo" src="${escapeHtml(logoUrl(item.path))}" style="height:${item.height}px;${shift}" alt="">`;
+                        // An empty logo is not shown to respondents, so its marker takes (almost) no height here.
+                        return placeholders ? '<span class="kop-logo-placeholder is-empty" title="Logo belum diisi; tidak tampil di formulir">+ LOGO</span>' : '';
                     }
                     if (!item.text) return '';
-                    if (item.type === 'text') return `<div class="kop-text is-${escapeHtml(item.style)}">${escapeHtml(item.text)}</div>`;
-                    return `<span class="kop-badge is-${escapeHtml(item.style)}">${escapeHtml(item.text)}</span>`;
+                    if (item.type === 'text') return `<div class="kop-text is-${escapeHtml(item.style)}" style="${shift}">${escapeHtml(item.text)}</div>`;
+                    return `<span class="kop-badge is-${escapeHtml(item.style)}" style="${shift}">${escapeHtml(item.text)}</span>`;
                 }).join('')}
             </div>`).join('')}</div>`;
     }
@@ -71,6 +85,26 @@
     function renderPreviews() {
         renderKop(paperPreview, { placeholders: true });
         renderKop(dialogPreview, { placeholders: true });
+    }
+
+    // Vertical nudge: lines items up across slots, e.g. CAWI level with RAHASIA.
+    function offsetLabel(offset) {
+        if (!offset) return 'Posisi tegak: sejajar';
+        return `Posisi tegak: ${offset < 0 ? 'naik' : 'turun'} ${Math.abs(offset)}px`;
+    }
+
+    function offsetControl(item) {
+        return `
+            <div class="kop-offset">
+                <label class="kop-range"><span data-offset-label>${offsetLabel(item.offset)}</span>
+                    <input type="range" min="-80" max="80" step="2" value="${item.offset}" data-kop-field="offset" aria-label="Geser ${escapeHtml(config.itemTypes[item.type])} naik atau turun">
+                </label>
+                <div class="kop-offset-buttons">
+                    <button class="mini-button" type="button" data-kop-action="nudge" data-step="-2" title="Naik 2px" aria-label="Naik">▲</button>
+                    <button class="mini-button" type="button" data-kop-action="nudge" data-step="2" title="Turun 2px" aria-label="Turun">▼</button>
+                    <button class="mini-button" type="button" data-kop-action="reset-offset" ${item.offset ? '' : 'disabled'}>Reset</button>
+                </div>
+            </div>`;
     }
 
     function itemCard(item) {
@@ -109,6 +143,7 @@
                     <button class="question-remove" type="button" data-kop-action="remove" aria-label="Hapus ${escapeHtml(typeLabel)}">×</button>
                 </div>
                 ${fields}
+                ${offsetControl(item)}
             </div>`;
     }
 
@@ -130,6 +165,13 @@
         save();
     }
 
+    function setOffset(item, offset, card) {
+        item.offset = Math.max(-80, Math.min(80, offset));
+        card.querySelector('[data-offset-label]').textContent = offsetLabel(item.offset);
+        card.querySelector('[data-kop-action="reset-offset"]').disabled = !item.offset;
+        save();
+    }
+
     function findItem(element) {
         const card = element.closest('[data-item-id]');
         return card ? items.find(item => item.id === card.dataset.itemId) : null;
@@ -139,7 +181,7 @@
         const add = event.target.closest('[data-kop-add]');
         if (add) {
             const type = add.dataset.kopAdd;
-            items.push({ id: makeId(), type, slot: add.dataset.slot, text: '', style: type === 'badge' ? 'dark' : 'bold', path: null, height: 64 });
+            items.push({ id: makeId(), type, slot: add.dataset.slot, text: '', style: type === 'badge' ? 'dark' : 'bold', path: null, height: 64, offset: 0 });
             render();
             slotsEditor.querySelector(`[data-item-id="${items.at(-1).id}"] input[type="text"]`)?.focus();
             return;
@@ -152,6 +194,11 @@
         if (action === 'remove') {
             items.splice(items.indexOf(item), 1);
             render();
+        }
+        if (action === 'nudge' || action === 'reset-offset') {
+            const card = event.target.closest('.kop-item');
+            setOffset(item, action === 'reset-offset' ? 0 : item.offset + Number(event.target.closest('[data-step]').dataset.step), card);
+            card.querySelector('[data-kop-field="offset"]').value = item.offset;
         }
         if (action === 'clear-logo') {
             item.path = null;
@@ -175,6 +222,9 @@
         if (field === 'height') {
             item.height = Number(event.target.value);
             event.target.previousElementSibling.textContent = `Tinggi ${item.height}px`;
+        } else if (field === 'offset') {
+            setOffset(item, Number(event.target.value), event.target.closest('.kop-item'));
+            return;
         } else {
             item[field] = event.target.value;
         }
@@ -251,7 +301,7 @@
                 if (replaced && index === 0) {
                     replaced.path = path;
                 } else {
-                    items.splice(insertAt++, 0, { id: makeId(), type: 'logo', slot: target.slot, text: '', style: 'bold', path, height: 64 });
+                    items.splice(insertAt++, 0, { id: makeId(), type: 'logo', slot: target.slot, text: '', style: 'bold', path, height: 64, offset: 0 });
                 }
             } catch (failure) {
                 render();
@@ -395,6 +445,11 @@
             event.preventDefault();
             if (type === 'dragover') event.dataTransfer.dropEffect = 'none';
         }
+    }));
+
+    dialog.querySelectorAll('[data-kop-align]').forEach(button => button.addEventListener('click', () => {
+        align = button.dataset.kopAlign;
+        save();
     }));
 
     // Dialog, tabs and the intro summary on the paper.
