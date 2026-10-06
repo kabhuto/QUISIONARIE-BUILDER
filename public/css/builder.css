@@ -359,3 +359,21 @@ body{background:#fff}.topbar,.page-intro,.toolbox,.settings-panel,.editor-toolba
 .mention-list button:hover,.mention-list button:focus-visible{background:#eef6f3;outline:none}
 .mention-list b{display:grid;place-items:center;width:16px;height:16px;border-radius:3px;background:#e0ecff;color:#2456a6;font-size:9px}
 .mention-picker .mini-button{align-self:flex-end}
+/* Rule editor alignment: every control in a row shares one height and baseline */
+.rule-group .setting-select,.rule-row .setting-select,.check-card .setting-select,.vrule .setting-select,.logic-tools .setting-select,.mention-picker .setting-select{margin-top:0;height:30px}
+.rule-group{gap:8px;padding:10px}
+.rule-row{gap:6px;padding:8px}
+.rule-row-line,.rule-group-head,.check-card-head{display:flex;align-items:center;gap:6px}
+.rule-row-line>select.setting-select{flex:0 0 42%;min-width:0}
+.rule-row-line>.value-wrap,.rule-row-line>.mention-chip{flex:1 1 0;min-width:0}
+.rule-row-line>.mention-chip{min-height:30px;border-radius:15px}
+.value-wrap{align-items:stretch;height:30px}
+.value-wrap>.setting-select{border-radius:2px 0 0 2px}
+.mention-button{width:30px;height:30px;border:1px solid #dce7e3;border-left:0;border-radius:0 2px 2px 0;font-size:12px}
+.rule-row .question-remove,.rule-group-head .question-remove,.check-card-head .question-remove{flex:none;display:grid;place-items:center;width:22px;height:30px;padding:0;border-radius:3px}
+.rule-row .question-remove:hover,.rule-group-head .question-remove:hover,.check-card-head .question-remove:hover{background:#fbe4e0}
+.rule-group-add{gap:6px}
+.logic-tools{align-items:center;gap:6px}
+.logic-tools .mini-button{height:30px}
+.rule-row-line>select.setting-select{flex-basis:48%;padding:0 2px 0 6px}
+.rule-row-line{gap:4px}
