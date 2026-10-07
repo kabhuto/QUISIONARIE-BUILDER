@@ -22,11 +22,12 @@ class DummySurveySeederTest extends TestCase
 
         $surveys = Survey::query()->withCount('responses')->orderBy('title')->get();
         $this->assertSame([
+            'DUMMY: PENDATAAN RUMAH TANGGA DAN KETENAGAKERJAAN 2026',
             'DUMMY: SURVEI KEBUTUHAN DATA KONSUMEN 2026',
             'DUMMY: SURVEI SOSIAL EKONOMI RUMAH TANGGA 2026',
         ], $surveys->pluck('title')->all());
-        $this->assertSame([10, 10], $surveys->pluck('responses_count')->all());
-        $this->assertSame([10, 40], $surveys->map(fn (Survey $survey): int => count($survey->questions()))->all());
+        $this->assertSame([12, 10, 10], $surveys->pluck('responses_count')->all());
+        $this->assertSame([61, 10, 40], $surveys->map(fn (Survey $survey): int => count($survey->questions()))->all());
 
         foreach ($surveys as $survey) {
             $this->assertTrue($survey->isPublished());
@@ -40,7 +41,12 @@ class DummySurveySeederTest extends TestCase
             }
 
             foreach ($survey->responses as $response) {
-                $this->assertSame([], ResponseValidator::check($survey, $response->answers)['errors']);
+                // The only problems left are the consistency warnings the respondent confirmed.
+                $messages = array_column(ResponseValidator::check($survey, $response->answers)['errors'], 'message');
+                $confirmed = array_map(fn (array $warning): string => 'Peringatan: '.$warning['message'], $response->flags['confirmed_warnings'] ?? []);
+                sort($messages);
+                sort($confirmed);
+                $this->assertSame($confirmed, $messages);
             }
         }
     }
@@ -52,6 +58,6 @@ class DummySurveySeederTest extends TestCase
         $this->seed(DummySurveySeeder::class);
         $this->seed(DummySurveySeeder::class);
 
-        $this->assertSame(2, Survey::query()->count());
+        $this->assertSame(3, Survey::query()->count());
     }
 }

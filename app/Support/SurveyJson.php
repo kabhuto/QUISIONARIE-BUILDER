@@ -42,6 +42,7 @@ class SurveyJson
                 'id' => $response->id,
                 'submitted_at' => $response->created_at->toIso8601String(),
                 'answers' => $response->answers,
+                ...($response->flags ? ['flags' => $response->flags] : []),
             ])->all(),
             'assets' => ['logos' => self::logoAssets($survey)],
         ];

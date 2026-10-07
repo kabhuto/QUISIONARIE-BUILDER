@@ -36,7 +36,7 @@ class DummySurveySeeder extends Seeder
             ]);
 
             foreach ($file['responses'] as $response) {
-                $survey->responses()->create(['answers' => $response['answers']])
+                $survey->responses()->create(['answers' => $response['answers'], 'flags' => $response['flags'] ?? null])
                     ->forceFill(['created_at' => Carbon::parse($response['submitted_at']), 'updated_at' => Carbon::parse($response['submitted_at'])])
                     ->save();
             }
