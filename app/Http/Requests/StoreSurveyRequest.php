@@ -360,8 +360,8 @@ class StoreSurveyRequest extends FormRequest
             if (array_diff($mentions, array_keys($earlierQuestions)) !== []) {
                 return 'memakai tag jawaban dari pertanyaan yang tidak tersedia';
             }
-            if ($mentions === [] && in_array($operator, ['greater_than', 'less_than'], true) && ! is_numeric(str_replace(',', '.', $value))) {
-                return 'harus memakai angka untuk pembanding lebih/kurang dari';
+            if ($problem = SurveyLogic::valueProblem($operator, $value)) {
+                return $problem;
             }
             if (mb_strlen($value) > 255) {
                 return 'memiliki nilai yang terlalu panjang';
@@ -444,6 +444,12 @@ class StoreSurveyRequest extends FormRequest
 
         if (! in_array($condition['operator'], SurveyLogic::VALUELESS_OPERATORS, true) && trim((string) ($condition['value'] ?? '')) === '') {
             $validator->errors()->add($key, "Logika {$subject} belum memiliki nilai jawaban.");
+
+            return;
+        }
+
+        if ($problem = SurveyLogic::valueProblem($condition['operator'], (string) ($condition['value'] ?? ''))) {
+            $validator->errors()->add($key, "Logika {$subject} {$problem}.");
         }
     }
 

@@ -27,6 +27,16 @@ class SurveyLogic
     public const MAX_RULES = 20;
 
     /**
+     * Operators that compare the answer with one number.
+     */
+    public const NUMERIC_OPERATORS = ['greater_than', 'less_than', 'greater_or_equal', 'less_or_equal'];
+
+    /**
+     * Operators that compare the answer with a range of numbers, written "from;to" (both ends included).
+     */
+    public const RANGE_OPERATORS = ['between', 'not_between'];
+
+    /**
      * An answer tag inside a rule value: {{question-id}} or {{question-id|fallback}}.
      */
     public const MENTION = '/\{\{([A-Za-z0-9_-]+)(?:\|([^}]*))?\}\}/';
@@ -266,6 +276,10 @@ class SurveyLogic
             'not_contains' => ! $contains,
             'greater_than' => $number !== null && $target !== null && $number > $target,
             'less_than' => $number !== null && $target !== null && $number < $target,
+            'greater_or_equal' => $number !== null && $target !== null && $number >= $target,
+            'less_or_equal' => $number !== null && $target !== null && $number <= $target,
+            'between' => self::inRange($number, $resolved) === true,
+            'not_between' => self::inRange($number, $resolved) === false,
             default => $equals,
         };
     }
@@ -302,13 +316,55 @@ class SurveyLogic
             $value = in_array($rule['operator'], self::VALUELESS_OPERATORS, true) ? '' : ' '.preg_replace_callback(
                 self::MENTION,
                 fn (array $match): string => 'jawaban '.($numbers[$match[1]] ?? $match[1]),
-                (string) $rule['value'],
+                in_array($rule['operator'], self::RANGE_OPERATORS, true) ? str_replace(';', ' sampai ', (string) $rule['value']) : (string) $rule['value'],
             );
 
             return ($numbers[$rule['question_id']] ?? $rule['question_id']).' '.$operator.$value;
         }, $group['rules']);
 
         return implode(($group['operator'] ?? 'and') === 'or' ? ' atau ' : ' dan ', $parts);
+    }
+
+    /**
+     * The two ends of a "from;to" range value, or null when it is not a proper range.
+     *
+     * @return array{float, float}|null
+     */
+    public static function rangeBounds(string $value): ?array
+    {
+        $parts = explode(';', $value);
+        $from = self::number($parts[0] ?? null);
+        $to = self::number($parts[1] ?? null);
+
+        return count($parts) === 2 && $from !== null && $to !== null && $from <= $to ? [$from, $to] : null;
+    }
+
+    /**
+     * Whether a number lies inside a range; null when either is missing, so neither range operator holds.
+     */
+    private static function inRange(?float $number, string $range): ?bool
+    {
+        $bounds = self::rangeBounds($range);
+
+        return $number === null || $bounds === null ? null : $number >= $bounds[0] && $number <= $bounds[1];
+    }
+
+    /**
+     * What is wrong with a rule's value for its operator, if anything (answer tags are checked elsewhere).
+     */
+    public static function valueProblem(string $operator, string $value): ?string
+    {
+        if (self::mentions($value) !== []) {
+            return null;
+        }
+        if (in_array($operator, self::NUMERIC_OPERATORS, true) && self::number($value) === null) {
+            return 'harus memakai angka untuk pembanding angka';
+        }
+        if (in_array($operator, self::RANGE_OPERATORS, true) && self::rangeBounds($value) === null) {
+            return 'harus memakai rentang angka yang benar (dari ≤ sampai)';
+        }
+
+        return null;
     }
 
     private static function number(mixed $value): ?float

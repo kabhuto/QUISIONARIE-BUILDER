@@ -22,6 +22,8 @@
     const noCodeTypes = config.noCodeTypes;
     const rangeTypes = Object.keys(config.rangeDefaults);
     const valueless = config.valuelessOperators;
+    const numericOperators = config.numericOperators;
+    const rangeOperators = config.rangeOperators;
 
     const blocks = restoreBlocks() ?? [makeBlock('KETERANGAN UMUM')];
     let selected = blocks[0] ? { kind: 'block', id: blocks[0].id } : null;
@@ -136,6 +138,13 @@
 
     // An answer tag in a rule value, {{question-id}} or {{question-id|fallback}}: compare with another answer.
     const MENTION = /\{\{([A-Za-z0-9_-]+)(?:\|([^}]*))?\}\}/g;
+
+    // A range value is "from;to"; null unless both ends are numbers in order.
+    function rangeBounds(value) {
+        const parts = String(value ?? '').split(';').map(part => part.trim().replace(',', '.'));
+        if (parts.length !== 2 || parts.some(part => part === '' || Number.isNaN(Number(part)))) return null;
+        return Number(parts[0]) <= Number(parts[1]) ? parts.map(Number) : null;
+    }
 
     function mentionsIn(value) {
         return [...String(value ?? '').matchAll(MENTION)].map(match => ({ id: match[1], fallback: match[2] ?? '' }));
@@ -347,7 +356,8 @@
             if (!valueless.includes(rule.operator) && !rule.value.trim()) return 'belum memiliki nilai jawaban';
             const mentions = valueless.includes(rule.operator) ? [] : mentionsIn(rule.value);
             if (mentions.some(mention => !available.some(item => item.question.id === mention.id))) return 'memakai tag jawaban dari pertanyaan yang tidak tersedia';
-            if (!mentions.length && ['greater_than', 'less_than'].includes(rule.operator) && Number.isNaN(Number(rule.value.replace(',', '.')))) return 'harus memakai angka untuk pembanding lebih/kurang dari';
+            if (!mentions.length && numericOperators.includes(rule.operator) && Number.isNaN(Number(rule.value.replace(',', '.')))) return 'harus memakai angka untuk pembanding angka';
+            if (!mentions.length && rangeOperators.includes(rule.operator) && !rangeBounds(rule.value)) return 'harus memakai rentang angka yang benar (dari ≤ sampai)';
         }
         return '';
     }
@@ -392,7 +402,7 @@
         return group.rules.map(rule => {
             if (rule.rules) return `(${describeGroup(rule, available)})`;
             const source = available.find(item => item.question.id === rule.question_id);
-            const tagged = rule.value.replace(MENTION, (match, id) => `@${available.find(item => item.question.id === id)?.number ?? '?'}`);
+            const tagged = (rangeOperators.includes(rule.operator) ? rule.value.replace(';', '–') : rule.value).replace(MENTION, (match, id) => `@${available.find(item => item.question.id === id)?.number ?? '?'}`);
             const value = valueless.includes(rule.operator) ? '' : ` ${tagged}`;
             return `${source?.number ?? '?'} ${config.operators[rule.operator]}${value}`;
         }).join(group.operator === 'or' ? ' atau ' : ' dan ');
@@ -501,7 +511,7 @@
         if (source) {
             html += `<label class="setting-field"><span>Jawabannya</span>
                 <select class="setting-select" data-logic-field="operator">
-                    ${Object.entries(config.operators).map(([operator, label]) => `<option value="${operator}" ${operator === condition.operator ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+                    ${Object.entries(config.operators).filter(([operator]) => !rangeOperators.includes(operator)).map(([operator, label]) => `<option value="${operator}" ${operator === condition.operator ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
                 </select></label>`;
             if (!valueless.includes(condition.operator)) {
                 const options = choiceTypes.includes(source.question.type) ? source.question.options : [];
@@ -542,6 +552,14 @@
 
     function ruleValueControl(rule, source, available, isOpen) {
         if (valueless.includes(rule.operator)) return '';
+        if (rangeOperators.includes(rule.operator)) {
+            const [from = '', to = ''] = rule.value.split(';');
+            return `<span class="range-wrap">
+                <input class="setting-select" type="number" step="any" value="${escapeHtml(from)}" placeholder="Dari" data-range-part="0" aria-label="Batas bawah">
+                <span aria-hidden="true">–</span>
+                <input class="setting-select" type="number" step="any" value="${escapeHtml(to)}" placeholder="Sampai" data-range-part="1" aria-label="Batas atas">
+            </span>`;
+        }
         const mention = wholeMention(rule.value);
         if (mention) {
             const reference = available.find(item => item.question.id === mention.id);
@@ -568,13 +586,13 @@
 
     function ruleValueInput(rule, source) {
         const options = source && choiceTypes.includes(source.question.type) ? source.question.options : [];
-        if (options.length && !['greater_than', 'less_than'].includes(rule.operator)) {
+        if (options.length && !numericOperators.includes(rule.operator)) {
             return `<select class="setting-select" data-rule-field="value" aria-label="Nilai">
                 <option value="">Pilih jawaban…</option>
                 ${options.map(option => `<option value="${escapeHtml(option)}" ${option === rule.value ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
             </select>`;
         }
-        const numeric = ['greater_than', 'less_than'].includes(rule.operator) || ['number', 'currency'].includes(source?.question.type);
+        const numeric = numericOperators.includes(rule.operator) || ['number', 'currency'].includes(source?.question.type);
         return `<input class="setting-select" type="${numeric ? 'number' : 'text'}" step="any" maxlength="255" value="${escapeHtml(rule.value)}" placeholder="Nilai" data-rule-field="value" aria-label="Nilai">`;
     }
 
@@ -1351,6 +1369,14 @@
             return afterPanelChange(question, { preview: ['prefill', 'placeholder'].includes(option) });
         }
 
+        if (target.dataset.rangePart) {
+            const row = target.closest('[data-path]');
+            const rule = nodeAt(scopeRoot(question, row.dataset.scope), parsePath(row.dataset.path));
+            const parts = rule.value.split(';');
+            parts[Number(target.dataset.rangePart)] = target.value;
+            rule.value = `${parts[0] ?? ''};${parts[1] ?? ''}`;
+            return afterPanelChange(question);
+        }
         if (target.dataset.ruleField === 'value' && target.tagName === 'INPUT') {
             const row = target.closest('[data-path]');
             nodeAt(scopeRoot(question, row.dataset.scope), parsePath(row.dataset.path)).value = target.value;
@@ -1475,7 +1501,10 @@
         if (ruleField) {
             const row = target.closest('[data-path]');
             const rule = nodeAt(scopeRoot(question, row.dataset.scope), parsePath(row.dataset.path));
+            const wasRange = rangeOperators.includes(rule.operator);
             rule[ruleField] = target.value;
+            // A single value and a "from;to" range are not interchangeable.
+            if (ruleField === 'operator' && wasRange !== rangeOperators.includes(rule.operator)) rule.value = '';
             if (ruleField === 'question_id') {
                 const source = findQuestion(target.value)?.question;
                 rule.value = source && choiceTypes.includes(source.type) ? source.options[0] ?? '' : '';

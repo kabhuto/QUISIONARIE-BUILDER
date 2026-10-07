@@ -50,6 +50,15 @@
         return text !== '' && !Number.isNaN(Number(text)) ? Number(text) : null;
     }
 
+    // A range value is "from;to", both ends included; null when the answer or the range is not numeric.
+    function inRange(number, range) {
+        const parts = String(range).split(';');
+        const from = toNumber(parts[0]);
+        const to = toNumber(parts[1]);
+        if (number === null || parts.length !== 2 || from === null || to === null || from > to) return null;
+        return number >= from && number <= to;
+    }
+
     // Answer tags in a rule value ({{id}} or {{id|fallback}}) become the respondent's answers.
     function resolveTags(value, known) {
         return String(value ?? '').replace(/\{\{([A-Za-z0-9_-]+)(?:\|([^}]*))?\}\}/g, (match, id, fallback) => {
@@ -80,6 +89,10 @@
             case 'not_contains': return !contains;
             case 'greater_than': return number !== null && target !== null && number > target;
             case 'less_than': return number !== null && target !== null && number < target;
+            case 'greater_or_equal': return number !== null && target !== null && number >= target;
+            case 'less_or_equal': return number !== null && target !== null && number <= target;
+            case 'between': return inRange(number, resolved) === true;
+            case 'not_between': return inRange(number, resolved) === false;
             default: return equals;
         }
     }

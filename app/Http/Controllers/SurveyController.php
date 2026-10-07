@@ -102,6 +102,8 @@ class SurveyController extends Controller
                 'maxTableColumns' => Survey::MAX_TABLE_COLUMNS,
                 'maxTableRows' => Survey::MAX_TABLE_ROWS,
                 'valuelessOperators' => SurveyLogic::VALUELESS_OPERATORS,
+                'numericOperators' => SurveyLogic::NUMERIC_OPERATORS,
+                'rangeOperators' => SurveyLogic::RANGE_OPERATORS,
                 'logicActions' => SurveyLogic::ACTIONS,
                 'maxRules' => SurveyLogic::MAX_RULES,
                 'fieldWidths' => Survey::FIELD_WIDTHS,

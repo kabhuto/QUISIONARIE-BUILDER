@@ -91,6 +91,10 @@ class Survey extends Model
         'empty' => 'kosong',
         'greater_than' => 'lebih dari',
         'less_than' => 'kurang dari',
+        'greater_or_equal' => 'minimal (≥)',
+        'less_or_equal' => 'maksimal (≤)',
+        'between' => 'di antara',
+        'not_between' => 'di luar rentang',
     ];
 
     /**

@@ -268,4 +268,52 @@ class FieldSettingsTest extends TestCase
         $this->post(route('surveys.store'), [...$payload, 'blocks' => json_encode([$block('a', ['orientation' => 'miring'])])])
             ->assertSessionHasErrors('blocks.0.orientation');
     }
+
+    public function test_checks_can_compare_with_a_range_of_numbers(): void
+    {
+        $survey = $this->makeSurvey([
+            $this->question('q-umur', 'number', 'Umur', ['required' => true]),
+            $this->question('q-hamil', 'single', 'Sedang hamil?', ['options' => ['Ya', 'Tidak'], 'validation' => ['rules' => [], 'message' => '', 'checks' => [[
+                'id' => 'k-rentang', 'level' => 'warning', 'message' => 'Umur di luar rentang lazim kehamilan (15-49 tahun). Apakah benar?',
+                'conditions' => ['operator' => 'and', 'rules' => [
+                    ['question_id' => 'q-hamil', 'operator' => 'equals', 'value' => 'Ya'],
+                    ['question_id' => 'q-umur', 'operator' => 'not_between', 'value' => '15;49'],
+                ]],
+            ]]]]),
+            $this->question('q-lansia', 'short', 'Nama pendamping', ['logic' => $this->logic('q-umur', 'greater_or_equal', '60', ['require'])]),
+        ]);
+
+        // Unusual ages (10 and 90) raise the warning; the ends of the range (15 and 49) do not.
+        foreach (['10', '90'] as $age) {
+            $this->post(route('form.store', $survey), ['answers' => ['q-umur' => $age, 'q-hamil' => 'Ya', 'q-lansia' => 'Budi']])
+                ->assertSessionHasErrors(['answers.q-hamil' => 'Peringatan: Umur di luar rentang lazim kehamilan (15-49 tahun). Apakah benar?']);
+        }
+        foreach (['15', '30', '49'] as $age) {
+            $this->post(route('form.store', $survey), ['answers' => ['q-umur' => $age, 'q-hamil' => 'Ya']])
+                ->assertRedirect(route('form.thanks', $survey));
+        }
+
+        // "Minimal 60" includes 60 itself.
+        $this->post(route('form.store', $survey), ['answers' => ['q-umur' => '60']])->assertSessionHasErrors('answers.q-lansia');
+        $this->post(route('form.store', $survey), ['answers' => ['q-umur' => '59']])->assertRedirect(route('form.thanks', $survey));
+
+        $this->assertContains(
+            'peringatan jika 102 sama dengan Ya dan 101 di luar rentang 15 sampai 49: Umur di luar rentang lazim kehamilan (15-49 tahun). Apakah benar?',
+            SurveyJson::export($survey)['validation_rules'][1]['rules'],
+        );
+
+        // A range must be two numbers in order.
+        $blocks = fn (string $value): string => json_encode([['id' => 'b-1', 'title' => 'ART', 'layout' => 'full', 'condition' => null, 'questions' => [
+            $this->question('q-umur', 'number', 'Umur'),
+            $this->question('q-nama', 'short', 'Nama', ['logic' => $this->logic('q-umur', 'between', $value, ['require'])]),
+        ]]]);
+        $payload = [
+            'title' => 'Survei', 'form_code' => 'S-1', 'activity' => 'Pendataan',
+            'settings' => ['paper_size' => 'A4', 'orientation' => 'portrait', 'period_type' => 'none', 'numbering' => 'block', 'theme' => 'blue', 'confidential' => '0'],
+            'header' => json_encode(['items' => []]),
+        ];
+        $this->post(route('surveys.store'), [...$payload, 'blocks' => $blocks('49;15')])->assertSessionHasErrors('blocks.0.questions.1.logic');
+        $this->post(route('surveys.store'), [...$payload, 'blocks' => $blocks('15')])->assertSessionHasErrors('blocks.0.questions.1.logic');
+        $this->post(route('surveys.store'), [...$payload, 'blocks' => $blocks('15;49')])->assertSessionHasNoErrors();
+    }
 }

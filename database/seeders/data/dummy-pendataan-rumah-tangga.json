@@ -1,7 +1,7 @@
 {
     "format": "ruang-kuesioner",
     "version": 1,
-    "exported_at": "2026-10-07T06:32:44+00:00",
+    "exported_at": "2026-10-07T06:49:39+00:00",
     "survey": {
         "title": "DUMMY: PENDATAAN RUMAH TANGGA DAN KETENAGAKERJAAN 2026",
         "form_code": "PRTK26-DUMMY",
@@ -768,7 +768,7 @@
                                     "message": "Responden laki-laki tidak mungkin hamil. Periksa jenis kelamin atau jawaban ini."
                                 },
                                 {
-                                    "id": "k-hamil-tua",
+                                    "id": "k-hamil-umur",
                                     "level": "warning",
                                     "conditions": {
                                         "operator": "and",
@@ -780,12 +780,12 @@
                                             },
                                             {
                                                 "question_id": "q-umur",
-                                                "operator": "greater_than",
-                                                "value": "49"
+                                                "operator": "not_between",
+                                                "value": "15;49"
                                             }
                                         ]
                                     },
-                                    "message": "Responden berumur di atas 49 tahun sedang hamil. Apakah benar?"
+                                    "message": "Umur responden di luar rentang lazim kehamilan (15–49 tahun). Apakah benar?"
                                 }
                             ]
                         }
@@ -1124,7 +1124,7 @@
                             "message": "",
                             "checks": [
                                 {
-                                    "id": "k-pekerja-anak",
+                                    "id": "k-pekerja-umur",
                                     "level": "warning",
                                     "conditions": {
                                         "operator": "and",
@@ -1136,12 +1136,12 @@
                                             },
                                             {
                                                 "question_id": "q-umur",
-                                                "operator": "less_than",
-                                                "value": "15"
+                                                "operator": "not_between",
+                                                "value": "15;75"
                                             }
                                         ]
                                     },
-                                    "message": "Responden di bawah 15 tahun bekerja. Apakah benar?"
+                                    "message": "Umur pekerja di luar rentang lazim (15–75 tahun). Apakah benar?"
                                 }
                             ]
                         }
@@ -1320,12 +1320,12 @@
                                         "rules": [
                                             {
                                                 "question_id": "q-jam",
-                                                "operator": "greater_than",
-                                                "value": "60"
+                                                "operator": "not_between",
+                                                "value": "7;60"
                                             }
                                         ]
                                     },
-                                    "message": "Jam kerja lebih dari 60 jam seminggu. Apakah benar?"
+                                    "message": "Jam kerja di luar rentang lazim (7–60 jam seminggu). Apakah benar?"
                                 }
                             ]
                         }
@@ -2927,7 +2927,7 @@
                 "boleh kosong",
                 "salah satu dari: Ya | Tidak",
                 "galat jika 201 sama dengan Laki-laki dan 207 sama dengan Ya: Responden laki-laki tidak mungkin hamil. Periksa jenis kelamin atau jawaban ini.",
-                "peringatan jika 207 sama dengan Ya dan 203 lebih dari 49: Responden berumur di atas 49 tahun sedang hamil. Apakah benar?"
+                "peringatan jika 207 sama dengan Ya dan 203 di luar rentang 15 sampai 49: Umur responden di luar rentang lazim kehamilan (15–49 tahun). Apakah benar?"
             ],
             "logic": null,
             "validation_message": null
@@ -3019,7 +3019,7 @@
             "rules": [
                 "wajib diisi",
                 "salah satu dari: Ya | Tidak",
-                "peringatan jika 401 sama dengan Ya dan 203 kurang dari 15: Responden di bawah 15 tahun bekerja. Apakah benar?"
+                "peringatan jika 401 sama dengan Ya dan 203 di luar rentang 15 sampai 75: Umur pekerja di luar rentang lazim (15–75 tahun). Apakah benar?"
             ],
             "logic": null,
             "validation_message": null
@@ -3075,7 +3075,7 @@
                 "angka",
                 "nilai minimal: 1",
                 "nilai maksimal: 98",
-                "peringatan jika 405 lebih dari 60: Jam kerja lebih dari 60 jam seminggu. Apakah benar?"
+                "peringatan jika 405 di luar rentang 7 sampai 60: Jam kerja di luar rentang lazim (7–60 jam seminggu). Apakah benar?"
             ],
             "logic": "Jika 401 sama dengan Ya maka tampilkan",
             "validation_message": null
@@ -3521,7 +3521,7 @@
     ],
     "responses": [
         {
-            "id": 30,
+            "id": 42,
             "submitted_at": "2026-10-02T08:15:00+00:00",
             "answers": {
                 "q-wil": {
@@ -3606,7 +3606,7 @@
             }
         },
         {
-            "id": 31,
+            "id": 43,
             "submitted_at": "2026-10-03T09:18:00+00:00",
             "answers": {
                 "q-wil": {
@@ -3698,7 +3698,7 @@
             }
         },
         {
-            "id": 32,
+            "id": 44,
             "submitted_at": "2026-10-04T10:21:00+00:00",
             "answers": {
                 "q-wil": {
@@ -3822,7 +3822,7 @@
             }
         },
         {
-            "id": 33,
+            "id": 45,
             "submitted_at": "2026-10-05T11:24:00+00:00",
             "answers": {
                 "q-wil": {
@@ -3929,7 +3929,7 @@
             }
         },
         {
-            "id": 34,
+            "id": 46,
             "submitted_at": "2026-10-06T12:27:00+00:00",
             "answers": {
                 "q-wil": {
@@ -4006,7 +4006,7 @@
             }
         },
         {
-            "id": 35,
+            "id": 47,
             "submitted_at": "2026-10-07T13:30:00+00:00",
             "answers": {
                 "q-wil": {
@@ -4130,7 +4130,7 @@
             }
         },
         {
-            "id": 36,
+            "id": 48,
             "submitted_at": "2026-10-08T14:33:00+00:00",
             "answers": {
                 "q-wil": {
@@ -4235,13 +4235,13 @@
                     {
                         "question_id": "q-jam",
                         "check_id": "k-jam",
-                        "message": "Jam kerja lebih dari 60 jam seminggu. Apakah benar?"
+                        "message": "Jam kerja di luar rentang lazim (7–60 jam seminggu). Apakah benar?"
                     }
                 ]
             }
         },
         {
-            "id": 37,
+            "id": 49,
             "submitted_at": "2026-10-09T08:36:00+00:00",
             "answers": {
                 "q-wil": {
@@ -4380,7 +4380,7 @@
             }
         },
         {
-            "id": 38,
+            "id": 50,
             "submitted_at": "2026-10-10T09:39:00+00:00",
             "answers": {
                 "q-wil": {
@@ -4461,7 +4461,7 @@
             }
         },
         {
-            "id": 39,
+            "id": 51,
             "submitted_at": "2026-10-11T10:42:00+00:00",
             "answers": {
                 "q-wil": {
@@ -4555,7 +4555,7 @@
             }
         },
         {
-            "id": 40,
+            "id": 52,
             "submitted_at": "2026-10-12T11:45:00+00:00",
             "answers": {
                 "q-wil": {
@@ -4678,7 +4678,7 @@
             }
         },
         {
-            "id": 41,
+            "id": 53,
             "submitted_at": "2026-10-13T12:48:00+00:00",
             "answers": {
                 "q-wil": {
