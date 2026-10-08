@@ -24,10 +24,11 @@ class DummySurveySeederTest extends TestCase
         $this->assertSame([
             'DUMMY: PENDATAAN RUMAH TANGGA DAN KETENAGAKERJAAN 2026',
             'DUMMY: SURVEI KEBUTUHAN DATA KONSUMEN 2026',
+            'DUMMY: SURVEI RUMAH TANGGA USAHA PETERNAKAN 2026',
             'DUMMY: SURVEI SOSIAL EKONOMI RUMAH TANGGA 2026',
         ], $surveys->pluck('title')->all());
-        $this->assertSame([12, 10, 10], $surveys->pluck('responses_count')->all());
-        $this->assertSame([61, 10, 40], $surveys->map(fn (Survey $survey): int => count($survey->questions()))->all());
+        $this->assertSame([12, 10, 8, 10], $surveys->pluck('responses_count')->all());
+        $this->assertSame([61, 10, 50, 40], $surveys->map(fn (Survey $survey): int => count($survey->questions()))->all());
 
         foreach ($surveys as $survey) {
             $this->assertTrue($survey->isPublished());
@@ -58,6 +59,6 @@ class DummySurveySeederTest extends TestCase
         $this->seed(DummySurveySeeder::class);
         $this->seed(DummySurveySeeder::class);
 
-        $this->assertSame(3, Survey::query()->count());
+        $this->assertSame(4, Survey::query()->count());
     }
 }

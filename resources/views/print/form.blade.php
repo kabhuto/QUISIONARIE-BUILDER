@@ -80,9 +80,13 @@
                     <div class="sheet-block-title">BLOK {{ \App\Models\Survey::roman($blockIndex + 1) }}. {{ $block['title'] }}</div>
                     <table class="sheet-table">
                         @php
-                            $widestCode = max([0, ...array_column($block['questions'], 'code_length')]);
+                            $isHalf = ($block['layout'] ?? 'full') === 'half';
+                            // Long rows of code boxes would squeeze every answer in the block, so beyond this
+                            // many boxes a question keeps its boxes inside its own answer cell instead.
+                            $codeCap = $isHalf ? 4 : 8;
+                            $widestCode = max([0, ...array_filter(array_column($block['questions'], 'code_length'), fn (int $length): bool => $length <= $codeCap)]);
                         @endphp
-                        <colgroup><col class="col-num"><col class="col-label"><col class="col-answer"><col class="col-code" style="width: {{ $widestCode ? $widestCode * (($block['layout'] ?? 'full') === 'half' ? 13 : 15) + 12 : 0 }}px"></colgroup>
+                        <colgroup><col class="col-num"><col class="col-label"><col class="col-answer"><col class="col-code" style="width: {{ $widestCode ? $widestCode * ($isHalf ? 13 : 15) + 12 : 0 }}px"></colgroup>
                         <tbody>
                             @foreach ($block['questions'] as $question)
                                 {{-- Always-hidden fields (e.g. tracking values) have no place on paper. --}}

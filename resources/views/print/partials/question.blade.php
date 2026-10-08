@@ -8,8 +8,10 @@
         $type === 'code' && $hasAnswer => (string) $answer,
         in_array($type, ['number', 'rating', 'scale', 'slider'], true) && $hasAnswer && ctype_digit((string) $answer) && strlen((string) $answer) <= $question['code_length'] => str_pad((string) $answer, $question['code_length'], ' ', STR_PAD_LEFT),
         $choiceIndex !== false => str_pad((string) ($choiceIndex + 1), $question['code_length'], ' ', STR_PAD_LEFT),
+        in_array($type, ['currency', 'phone'], true) && $hasAnswer && strlen($digits = preg_replace('/\D/', '', (string) $answer)) <= $question['code_length'] => str_pad($digits, $question['code_length'], ' ', STR_PAD_LEFT),
         default => '',
     };
+    $wideCode = ($question['code_length'] ?? 0) > ($codeCap ?? PHP_INT_MAX);
 @endphp
 
 @if ($type === 'info')
@@ -135,7 +137,8 @@
                 <small>{{ $question['description'] }}</small>
             @endif
         </td>
-        <td class="sheet-answer">
+        <td @class(['sheet-answer', 'has-wide-code' => $wideCode]) @if ($wideCode) colspan="2" @endif>
+            @if ($wideCode)<div class="sheet-answer-row"><div class="sheet-answer-main">@endif
             @if (in_array($type, \App\Models\Survey::CHOICE_TYPES, true))
                 <span @class(['sheet-options', 'is-columns' => count($question['options']) > 3])>
                     @foreach ($question['options'] as $optionIndex => $option)
@@ -169,15 +172,22 @@
             @else
                 <span class="sheet-line">@if ($type === 'currency')Rp @endif</span>
             @endif
-        </td>
-        <td class="sheet-code">
-            @if ($question['code_length'] > 0)
-                <span class="sheet-boxes">
-                    @for ($digit = 0; $digit < $question['code_length']; $digit++)
-                        <i>{{ trim(substr($codeValue, $digit, 1)) }}</i>
-                    @endfor
-                </span>
+            @if ($wideCode)
+                </div>
+                <span class="sheet-boxes">@for ($digit = 0; $digit < $question['code_length']; $digit++)<i>{{ trim(substr($codeValue, $digit, 1)) }}</i>@endfor</span>
+                </div>
             @endif
         </td>
+        @unless ($wideCode)
+            <td class="sheet-code">
+                @if ($question['code_length'] > 0)
+                    <span class="sheet-boxes">
+                        @for ($digit = 0; $digit < $question['code_length']; $digit++)
+                            <i>{{ trim(substr($codeValue, $digit, 1)) }}</i>
+                        @endfor
+                    </span>
+                @endif
+            </td>
+        @endunless
     </tr>
 @endif

@@ -112,3 +112,9 @@ body.print-page{background:#fff}
 .sheet-signature{display:block;height:64px;border-bottom:1px dotted #000}
 .sheet-signature img{display:block;max-height:60px;max-width:100%}
 @media print{.sheet+.sheet{break-before:page}}
+.sheet-answer-row{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:4px 8px}
+.sheet-answer-main{flex:1 1 90px;min-width:0}
+.sheet-answer-row>.sheet-boxes{flex:none;margin-left:auto;padding-left:1px}
+.sheet-block.is-half .sheet-options.is-columns{grid-template-columns:1fr}
+.sheet-options>span{overflow-wrap:break-word;min-width:0}
+.sheet-options .is-chosen{max-width:100%;width:fit-content;white-space:normal}
