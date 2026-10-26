@@ -13,7 +13,14 @@
     $placeholder = $question['placeholder'] ?? '';
     $maxLength = $question['max_length'] ?? null;
     $width = 'w-'.str_replace('/', '-', $question['width'] ?? 'full');
-    $help = ($question['description'] ?? '') !== '' ? '<p class="fill-hint">'.e($question['description']).'</p>' : '';
+    $help = ($question['description'] ?? '') !== '' ? '<p class="fill-hint">'.\App\Support\Piping::html($question['description']).'</p>' : '';
+    $label = \App\Support\Piping::html($question['label']);
+    // Options may come from the answers chosen on an earlier question; JavaScript keeps them in step.
+    $choiceOptions = \App\Models\Survey::optionsFor($question, (array) old('answers', []));
+    $hasOther = \App\Models\Survey::hasOtherOption($question);
+    $otherName = 'answers['.$question['id'].\App\Models\Survey::OTHER_SUFFIX.']';
+    $otherOld = old('answers.'.$question['id'].\App\Models\Survey::OTHER_SUFFIX);
+    $otherLabel = ($question['other_label'] ?? '') !== '' ? $question['other_label'] : \App\Models\Survey::DEFAULT_OTHER_LABEL;
     $helpAbove = ($question['help_position'] ?? 'below') === 'above';
     $isBranch = $question['hidden'] && in_array('show', $logic['actions'] ?? [], true);
     // Shown or hidden by JavaScript from the field logic; the asterisk follows [data-required].
@@ -25,9 +32,9 @@
     <div @class(['fill-question', 'cawi-info', $width]) data-question-id="{{ $question['id'] }}" data-type="info"
          @if ($question['hidden']) data-static-hidden hidden @endif
          @if ($logic) data-logic="{{ json_encode($logic) }}" @endif>
-        <strong>ⓘ {{ $question['label'] }}</strong>
+        <strong>ⓘ {{ $label }}</strong>
         @if ($question['description'] !== '')
-            <p>{!! nl2br(e($question['description'])) !!}</p>
+            <p>{!! nl2br(\App\Support\Piping::html($question['description'])) !!}</p>
         @endif
     </div>
 @else
@@ -38,6 +45,9 @@
          @if ($question['disabled']) data-static-disabled @endif
          @if ($logic) data-logic="{{ json_encode($logic) }}" @endif
          @if ($hasRules) data-validation="{{ json_encode($question['validation']) }}" @endif
+         @if ($type === 'calc') data-formula="{{ $question['formula'] }}" data-format="{{ $question['format'] }}" data-decimals="{{ $question['decimals'] }}" @endif
+         @if (($question['options_from'] ?? '') !== '') data-options-from="{{ $question['options_from'] }}" @endif
+         @if (($question['mask'] ?? '') !== '') data-mask="{{ $question['mask'] }}" @endif
          @if ($maxLength) data-max-length="{{ $maxLength }}" @endif>
 
         @if ($type === 'region')
@@ -73,7 +83,7 @@
             @endforeach
         @elseif ($type === 'matrix')
             <div class="cawi-q cawi-q-wide">
-                <span @class(['fill-label', $labelClass])><span class="cawi-number">{{ $number }}.</span> {{ $question['label'] }}{!! $required !!}</span>
+                <span @class(['fill-label', $labelClass])><span class="cawi-number">{{ $number }}.</span> {{ $label }}{!! $required !!}</span>
                 {!! $help !!}
             </div>
             <div class="cawi-table-wrap">
@@ -106,7 +116,7 @@
                 $rowCount = $isFixed ? count($table['rows']) : min($table['max_rows'], max($table['initial_rows'] ?? 3, count($oldRows)));
             @endphp
             <div class="cawi-q cawi-q-wide">
-                <span @class(['fill-label', $labelClass])><span class="cawi-number">{{ $number }}.</span> {{ $question['label'] }}{!! $required !!}</span>
+                <span @class(['fill-label', $labelClass])><span class="cawi-number">{{ $number }}.</span> {{ $label }}{!! $required !!}</span>
                 {!! $help !!}
             </div>
             <div class="cawi-table-wrap">
@@ -150,8 +160,8 @@
         @else
             <div class="cawi-row">
                 <div class="cawi-q">
-                    <label @class(['fill-label', $labelClass]) @unless (in_array($type, ['single', 'multiple', 'code', 'rating', 'scale', 'signature'], true)) for="{{ $inputId }}" @endunless id="{{ $inputId }}-label">
-                        <span class="cawi-number">{{ $number }}.</span> {{ $question['label'] }}{!! $required !!}
+                    <label @class(['fill-label', $labelClass]) @unless (in_array($type, ['single', 'multiple', 'code', 'rating', 'scale', 'signature', 'calc'], true)) for="{{ $inputId }}" @endunless id="{{ $inputId }}-label">
+                        <span class="cawi-number">{{ $number }}.</span> {{ $label }}{!! $required !!}
                     </label>
                 </div>
                 <div class="cawi-a">
@@ -170,6 +180,31 @@
                             @break
                         @case('date')
                             <input class="fill-input cawi-short" id="{{ $inputId }}" name="{{ $name }}" type="date" value="{{ $old }}">
+                            @break
+                        @case('time')
+                            <input class="fill-input cawi-short" id="{{ $inputId }}" name="{{ $name }}" type="time" value="{{ $old }}">
+                            @break
+                        @case('calc')
+                            <output class="cawi-calc" data-calc-output aria-live="polite">—</output>
+                            <p class="fill-hint">Dihitung otomatis dari jawaban lain.</p>
+                            @break
+                        @case('location')
+                            <div class="cawi-location" data-location>
+                                <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="text" inputmode="decimal" maxlength="80" value="{{ $old }}" placeholder="lintang, bujur — mis. -7.0321, 112.7464">
+                                <button class="cawi-button is-ghost" type="button" data-locate>📍 Ambil lokasi saat ini</button>
+                                <p class="fill-hint" data-location-status></p>
+                            </div>
+                            @break
+                        @case('file')
+                            @php
+                                $extensions = \App\Models\Survey::fileExtensions($question);
+                                $maxMb = $question['file']['max_mb'] ?? 5;
+                            @endphp
+                            <div class="cawi-file" data-file>
+                                <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="file" accept="{{ collect($extensions)->map(fn ($extension) => '.'.$extension)->implode(',') }}" data-max-mb="{{ $maxMb }}" @if (($question['file']['accept'] ?? 'image') === 'image') capture="environment" @endif>
+                                <img class="cawi-file-preview" alt="" hidden data-file-preview>
+                                <p class="fill-hint">{{ strtoupper(implode(', ', $extensions)) }} · maksimal {{ $maxMb }} MB @if ($errors->any()) · pilih berkas lagi bila sebelumnya sudah dipilih @endif</p>
+                            </div>
                             @break
                         @case('email')
                             <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="email" maxlength="160" autocomplete="email" value="{{ $old }}" placeholder="{{ $placeholder }}">
@@ -229,8 +264,8 @@
                             @break
                         @case('single')
                         @case('multiple')
-                            <div @class(['cawi-options', 'is-columns' => count($question['options']) > 4 && $width === 'w-full']) role="{{ $type === 'single' ? 'radiogroup' : 'group' }}" aria-labelledby="{{ $inputId }}-label">
-                                @foreach ($question['options'] as $optionIndex => $option)
+                            <div @class(['cawi-options', 'is-columns' => count($choiceOptions) > 4 && $width === 'w-full']) role="{{ $type === 'single' ? 'radiogroup' : 'group' }}" aria-labelledby="{{ $inputId }}-label" data-options>
+                                @foreach ($choiceOptions as $optionIndex => $option)
                                     <label @class(['cawi-option', 'is-multiple' => $type === 'multiple'])>
                                         @if ($type === 'single')
                                             <input type="radio" name="{{ $name }}" value="{{ $option }}" @checked($old === $option)>
@@ -240,18 +275,40 @@
                                         <span>{{ $option }}</span>
                                     </label>
                                 @endforeach
+                                @if ($hasOther)
+                                    <label @class(['cawi-option', 'is-other', 'is-multiple' => $type === 'multiple'])>
+                                        <input type="{{ $type === 'single' ? 'radio' : 'checkbox' }}" name="{{ $name }}{{ $type === 'multiple' ? '[]' : '' }}" value="{{ \App\Models\Survey::OTHER_VALUE }}" @checked(in_array(\App\Models\Survey::OTHER_VALUE, (array) $old, true)) data-other-choice>
+                                        <span>{{ $otherLabel }}</span>
+                                    </label>
+                                @endif
                             </div>
+                            @if (($question['options_from'] ?? '') !== '')
+                                <p class="fill-hint" data-options-empty @if ($choiceOptions !== []) hidden @endif>Pilihan muncul setelah pertanyaan {{ $numbers[$question['options_from']] ?? '' }} dijawab.</p>
+                            @endif
+                            @if ($hasOther)
+                                <input class="fill-input cawi-other" type="text" name="{{ $otherName }}" maxlength="255" value="{{ $otherOld }}" placeholder="Sebutkan…" aria-label="Sebutkan jawaban lainnya" data-other-text @unless (in_array(\App\Models\Survey::OTHER_VALUE, (array) $old, true)) hidden @endunless>
+                            @endif
                             @break
                         @case('dropdown')
-                            <select class="fill-input" id="{{ $inputId }}" name="{{ $name }}">
+                            <select class="fill-input" id="{{ $inputId }}" name="{{ $name }}" data-options>
                                 <option value="">{{ $placeholder ?: 'Pilih jawaban…' }}</option>
-                                @foreach ($question['options'] as $option)
+                                @foreach ($choiceOptions as $option)
                                     <option value="{{ $option }}" @selected($old === $option)>{{ $option }}</option>
                                 @endforeach
+                                @if ($hasOther)
+                                    <option value="{{ \App\Models\Survey::OTHER_VALUE }}" @selected($old === \App\Models\Survey::OTHER_VALUE) data-other-choice>{{ $otherLabel }}</option>
+                                @endif
                             </select>
+                            @if (($question['options_from'] ?? '') !== '')
+                                <p class="fill-hint" data-options-empty @if ($choiceOptions !== []) hidden @endif>Pilihan muncul setelah pertanyaan {{ $numbers[$question['options_from']] ?? '' }} dijawab.</p>
+                            @endif
+                            @if ($hasOther)
+                                <input class="fill-input cawi-other" type="text" name="{{ $otherName }}" maxlength="255" value="{{ $otherOld }}" placeholder="Sebutkan…" aria-label="Sebutkan jawaban lainnya" data-other-text @unless ($old === \App\Models\Survey::OTHER_VALUE) hidden @endunless>
+                            @endif
                             @break
                         @default
-                            <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="text" maxlength="{{ $maxLength ?: 255 }}" value="{{ $old }}" placeholder="{{ $placeholder }}">
+                            @php($mask = $question['mask'] ?? '')
+                            <input class="fill-input @if ($mask !== '') cawi-masked @endif" id="{{ $inputId }}" name="{{ $name }}" type="text" maxlength="{{ $mask !== '' ? mb_strlen($mask) : ($maxLength ?: 255) }}" value="{{ $old }}" placeholder="{{ $placeholder !== '' ? $placeholder : ($mask !== '' ? strtr($mask, ['9' => '0', 'a' => 'A', '*' => 'X']) : '') }}" @if ($mask !== '') inputmode="{{ preg_match('/[a*]/', $mask) ? 'text' : 'numeric' }}" autocomplete="off" @endif>
                     @endswitch
                     @unless ($helpAbove)
                         {!! $help !!}

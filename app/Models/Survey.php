@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Piping;
 use App\Support\SurveyLogic;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,6 +23,7 @@ class Survey extends Model
         'number' => 'Angka',
         'currency' => 'Rupiah',
         'date' => 'Tanggal',
+        'time' => 'Jam',
         'email' => 'Email',
         'phone' => 'Nomor telepon',
         'url' => 'Tautan (URL)',
@@ -34,8 +36,37 @@ class Survey extends Model
         'region' => 'Identitas wilayah',
         'table' => 'Tabel / listing',
         'signature' => 'Tanda tangan',
+        'calc' => 'Hitungan (rumus)',
+        'location' => 'Lokasi (GPS)',
+        'file' => 'Unggah berkas/foto',
         'info' => 'Keterangan',
     ];
+
+    /**
+     * The answer value of the automatic "Lainnya (sebutkan)" option; its typed text is stored
+     * under the question id plus OTHER_SUFFIX.
+     */
+    public const OTHER_VALUE = 'Lainnya';
+
+    public const OTHER_SUFFIX = '__lainnya';
+
+    public const DEFAULT_OTHER_LABEL = 'Lainnya (sebutkan)';
+
+    /**
+     * What an upload question accepts: label, file extensions.
+     */
+    public const FILE_KINDS = [
+        'image' => ['label' => 'Foto/gambar', 'extensions' => ['jpg', 'jpeg', 'png', 'webp']],
+        'document' => ['label' => 'Dokumen (PDF/Office)', 'extensions' => ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv']],
+        'any' => ['label' => 'Foto atau dokumen', 'extensions' => ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv']],
+    ];
+
+    public const MAX_FILE_MB = 10;
+
+    /**
+     * Input mask characters: 9 a digit, a a letter, * a letter or digit; anything else is typed as is.
+     */
+    public const MAX_MASK_LENGTH = 40;
 
     public const CHOICE_TYPES = ['single', 'multiple', 'dropdown'];
 
@@ -44,7 +75,7 @@ class Survey extends Model
      */
     public const RANGE_TYPES = ['rating', 'scale', 'slider'];
 
-    public const NUMERIC_TYPES = ['number', 'currency', ...self::RANGE_TYPES];
+    public const NUMERIC_TYPES = ['number', 'currency', 'calc', ...self::RANGE_TYPES];
 
     /**
      * Types that hold structured answers, or none at all; they cannot drive display logic.
@@ -54,7 +85,12 @@ class Survey extends Model
     /**
      * Types without code boxes on the printed sheet.
      */
-    public const NO_CODE_TYPES = [...self::NON_LOGIC_TYPES, 'signature'];
+    public const NO_CODE_TYPES = [...self::NON_LOGIC_TYPES, 'signature', 'location', 'file'];
+
+    /**
+     * Types the respondent never types into: their answer is worked out from other answers.
+     */
+    public const COMPUTED_TYPES = ['calc'];
 
     public const MAX_CODE_LENGTH = 20;
 
@@ -105,7 +141,7 @@ class Survey extends Model
     /**
      * Question types whose answer can be typed or chosen up front (the "Nilai awal" option).
      */
-    public const PREFILL_TYPES = ['short', 'long', 'number', 'currency', 'date', 'email', 'phone', 'code', 'single', 'dropdown'];
+    public const PREFILL_TYPES = ['short', 'long', 'number', 'currency', 'date', 'time', 'email', 'phone', 'code', 'single', 'dropdown', 'location'];
 
     public const PLACEHOLDER_TYPES = ['short', 'long', 'number', 'currency', 'email', 'phone', 'url', 'dropdown'];
 
@@ -433,6 +469,8 @@ class Survey extends Model
                 $questions[] = $question + [
                     'number' => $numbers[$question['id']],
                     'block_index' => $blockIndex,
+                    // The label with answer tags shown as question numbers, for admin pages and messages.
+                    'text' => Piping::text($question['label'], $numbers),
                 ];
             }
         }
@@ -446,6 +484,74 @@ class Survey extends Model
     public function tableQuestions(): array
     {
         return array_values(array_filter($this->questions(), fn (array $question): bool => $question['type'] === 'table'));
+    }
+
+    /**
+     * The regular expression an input mask such as "99.99.999" or "aa-9999" stands for.
+     */
+    public static function maskPattern(string $mask): string
+    {
+        $pattern = '';
+
+        foreach (mb_str_split($mask) as $character) {
+            $pattern .= match ($character) {
+                '9' => '[0-9]',
+                'a' => '[A-Za-z]',
+                '*' => '[A-Za-z0-9]',
+                default => preg_quote($character, '/'),
+            };
+        }
+
+        return '/^'.$pattern.'$/u';
+    }
+
+    /**
+     * The options a choice question offers for the given answers: its own, or the answers chosen
+     * on the question it takes them from ("Lainnya" there stands for the text typed with it).
+     *
+     * @param  array<string, mixed>  $question
+     * @param  array<string, mixed>  $answers
+     * @return list<string>
+     */
+    public static function optionsFor(array $question, array $answers): array
+    {
+        $source = $question['options_from'] ?? '';
+
+        if ($source === '') {
+            return $question['options'];
+        }
+
+        $chosen = array_values(array_filter((array) ($answers[$source] ?? []), fn ($value): bool => is_string($value) && trim($value) !== ''));
+        $other = trim((string) ($answers[$source.self::OTHER_SUFFIX] ?? ''));
+
+        return array_values(array_unique(array_map(fn (string $value): string => $value === self::OTHER_VALUE && $other !== '' ? $other : $value, $chosen)));
+    }
+
+    /**
+     * @param  array<string, mixed>  $question
+     */
+    public static function hasOtherOption(array $question): bool
+    {
+        return in_array($question['type'], self::CHOICE_TYPES, true) && ! empty($question['other_option']) && ($question['options_from'] ?? '') === '';
+    }
+
+    /**
+     * The extensions an upload question accepts.
+     *
+     * @param  array<string, mixed>  $question
+     * @return list<string>
+     */
+    public static function fileExtensions(array $question): array
+    {
+        return self::FILE_KINDS[$question['file']['accept'] ?? 'image']['extensions'] ?? self::FILE_KINDS['image']['extensions'];
+    }
+
+    /**
+     * Whether a stored answer is a file uploaded to this survey.
+     */
+    public static function isUploadPath(mixed $value): bool
+    {
+        return is_string($value) && preg_match('/^uploads\/\d+\/[A-Za-z0-9_-]+\.[a-z0-9]{2,5}$/', $value) === 1;
     }
 
     /**

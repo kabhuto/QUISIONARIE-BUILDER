@@ -76,7 +76,7 @@ class SurveyPrintController extends Controller
                 continue;
             }
 
-            $cells[] = [$question['label'], fn (SurveyResponse $response): string => $response->displayAnswer($question)];
+            $cells[] = [$question['text'], fn (SurveyResponse $response): string => $response->displayAnswer($question)];
         }
 
         $rows = [];

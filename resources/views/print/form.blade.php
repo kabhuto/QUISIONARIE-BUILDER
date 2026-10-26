@@ -4,6 +4,7 @@
         [$paperWidth, $paperHeight] = [$paperHeight, $paperWidth];
     }
     $periodLabel = $survey->periodLabel();
+    $questionIndex = collect($survey->questions())->keyBy('id')->all();
     // Blocks may set their own orientation, so one form can mix portrait and landscape pages.
     [$longSide, $shortSide] = [max($paperWidth, $paperHeight), min($paperWidth, $paperHeight)];
     $orientations = array_map(fn (array $block): string => $survey->blockOrientation($block), $survey->blocks ?? []);

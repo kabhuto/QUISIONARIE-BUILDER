@@ -3,7 +3,18 @@
     $number = $numbers[$question['id']] ?? null;
     $answer = $answers[$question['id']] ?? null;
     $hasAnswer = $answer !== null && $answer !== '' && $answer !== [];
-    $choiceIndex = in_array($type, ['single', 'dropdown'], true) && $hasAnswer ? array_search($answer, $question['options'], true) : false;
+    // Answer tags in the text: the answer on a filled sheet, the quoted question's number on a blank one.
+    $pipe = fn (string $text): string => $response
+        ? \App\Support\Piping::resolved($text, fn (string $id): string => isset($questionIndex[$id]) ? $response->displayAnswer($questionIndex[$id]) : '')
+        : \App\Support\Piping::text($text, $numbers);
+    $printLabel = $pipe($question['label']);
+    $printDescription = $pipe($question['description'] ?? '');
+    $printOptions = in_array($type, \App\Models\Survey::CHOICE_TYPES, true) ? \App\Models\Survey::optionsFor($question, $answers ?? []) : [];
+    if (\App\Models\Survey::hasOtherOption($question)) {
+        $printOptions[] = \App\Models\Survey::OTHER_VALUE;
+    }
+    $otherText = $answers[$question['id'].\App\Models\Survey::OTHER_SUFFIX] ?? '';
+    $choiceIndex = in_array($type, ['single', 'dropdown'], true) && $hasAnswer ? array_search($answer, $printOptions, true) : false;
     $codeValue = match (true) {
         $type === 'code' && $hasAnswer => (string) $answer,
         in_array($type, ['number', 'rating', 'scale', 'slider'], true) && $hasAnswer && ctype_digit((string) $answer) && strlen((string) $answer) <= $question['code_length'] => str_pad((string) $answer, $question['code_length'], ' ', STR_PAD_LEFT),
@@ -16,7 +27,7 @@
 
 @if ($type === 'info')
     <tr>
-        <td colspan="4" class="sheet-info"><b>{{ $question['label'] }}</b>@if ($question['description'] !== '') — {{ $question['description'] }}@endif</td>
+        <td colspan="4" class="sheet-info"><b>{{ $printLabel }}</b>@if ($question['description'] !== '') — {{ $printDescription }}@endif</td>
     </tr>
 @elseif ($type === 'region')
     @foreach (\App\Models\Survey::regionFields($question) as $field)
@@ -41,9 +52,9 @@
     <tr>
         <td class="sheet-num">{{ $number }}.</td>
         <td class="sheet-label" colspan="3">
-            {{ $question['label'] }}
+            {{ $printLabel }}
             @if ($question['description'] !== '')
-                <small>{{ $question['description'] }}</small>
+                <small>{{ $printDescription }}</small>
             @endif
             <table class="sheet-subtable">
                 <thead>
@@ -71,9 +82,9 @@
     <tr>
         <td class="sheet-num">{{ $number }}.</td>
         <td class="sheet-label">
-            {{ $question['label'] }}
+            {{ $printLabel }}
             @if ($question['description'] !== '')
-                <small>{{ $question['description'] }}</small>
+                <small>{{ $printDescription }}</small>
             @endif
         </td>
         <td class="sheet-answer" colspan="2">
@@ -93,9 +104,9 @@
     <tr>
         <td class="sheet-num">{{ $number }}.</td>
         <td class="sheet-label" colspan="3">
-            {{ $question['label'] }}
+            {{ $printLabel }}
             @if ($question['description'] !== '')
-                <small>{{ $question['description'] }}</small>
+                <small>{{ $printDescription }}</small>
             @endif
             <table class="sheet-subtable">
                 <thead>
@@ -132,19 +143,47 @@
     <tr>
         <td class="sheet-num">{{ $number }}.</td>
         <td class="sheet-label">
-            {{ $question['label'] }}
+            {{ $printLabel }}
             @if ($question['description'] !== '')
-                <small>{{ $question['description'] }}</small>
+                <small>{{ $printDescription }}</small>
             @endif
         </td>
         <td @class(['sheet-answer', 'has-wide-code' => $wideCode]) @if ($wideCode) colspan="2" @endif>
             @if ($wideCode)<div class="sheet-answer-row"><div class="sheet-answer-main">@endif
             @if (in_array($type, \App\Models\Survey::CHOICE_TYPES, true))
-                <span @class(['sheet-options', 'is-columns' => count($question['options']) > 3])>
-                    @foreach ($question['options'] as $optionIndex => $option)
-                        <span @class(['is-chosen' => in_array($option, (array) $answer, true)])>{{ $optionIndex + 1 }}. {{ $option }}</span>
-                    @endforeach
-                </span>
+                @if (($question['options_from'] ?? '') !== '' && ! $response)
+                    <small class="sheet-note">Pilihan dari jawaban pertanyaan {{ $numbers[$question['options_from']] ?? '' }}</small>
+                    <span class="sheet-line"></span>
+                @else
+                    <span @class(['sheet-options', 'is-columns' => count($printOptions) > 3])>
+                        @foreach ($printOptions as $optionIndex => $option)
+                            @if ($option === \App\Models\Survey::OTHER_VALUE && \App\Models\Survey::hasOtherOption($question))
+                                <span @class(['is-chosen' => in_array($option, (array) $answer, true)])>{{ $optionIndex + 1 }}. {{ ($question['other_label'] ?? '') !== '' ? $question['other_label'] : \App\Models\Survey::DEFAULT_OTHER_LABEL }}: @if ($otherText !== '')<b>{{ $otherText }}</b>@else<span class="sheet-dots"></span>@endif</span>
+                            @else
+                                <span @class(['is-chosen' => in_array($option, (array) $answer, true)])>{{ $optionIndex + 1 }}. {{ $option }}</span>
+                            @endif
+                        @endforeach
+                    </span>
+                @endif
+            @elseif ($type === 'calc')
+                @if ($hasAnswer)
+                    <span class="sheet-value">{{ \App\Support\Formula::display((string) $answer, $question['format'] ?? 'number', (int) ($question['decimals'] ?? 0)) }}</span>
+                @else
+                    <span class="sheet-line"></span>
+                @endif
+                <small class="sheet-note">= {{ \App\Support\Piping::text($question['formula'] ?? '', $numbers) }}</small>
+            @elseif ($type === 'time' && ! $hasAnswer)
+                <span class="sheet-date"><span class="date-part"><b>Jam</b><i></i><i></i></span><span class="date-part"><b>Menit</b><i></i><i></i></span></span>
+            @elseif ($type === 'location' && ! $hasAnswer)
+                <span class="sheet-date"><span class="date-part"><b>Lintang</b><span class="sheet-dots is-wide"></span></span><span class="date-part"><b>Bujur</b><span class="sheet-dots is-wide"></span></span></span>
+            @elseif ($type === 'file')
+                @if ($hasAnswer && in_array(strtolower(pathinfo((string) $answer, PATHINFO_EXTENSION)), ['jpg', 'jpeg', 'png', 'webp'], true))
+                    <img class="sheet-photo" src="{{ asset('storage/'.$answer) }}" alt="Foto {{ $printLabel }}">
+                @elseif ($hasAnswer)
+                    <span class="sheet-value">[berkas terlampir: {{ basename((string) $answer) }}]</span>
+                @else
+                    <span class="sheet-note">Lampirkan {{ mb_strtolower(\App\Models\Survey::FILE_KINDS[$question['file']['accept'] ?? 'image']['label']) }}</span>
+                @endif
             @elseif (in_array($type, ['rating', 'scale'], true))
                 <span class="sheet-options is-inline is-scale">
                     @foreach (\App\Models\Survey::rangeValues($question) as $value)

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreSurveyRequest;
 use App\Models\Survey;
 use App\Support\FieldValidation;
+use App\Support\Formula;
 use App\Support\SurveyLogic;
 use App\Support\SurveyTemplates;
 use Illuminate\Http\RedirectResponse;
@@ -112,6 +113,10 @@ class SurveyController extends Controller
                 'validationRules' => FieldValidation::RULES,
                 'checkLevels' => FieldValidation::CHECK_LEVELS,
                 'maxChecks' => FieldValidation::MAX_CHECKS,
+                'fileKinds' => Survey::FILE_KINDS,
+                'maxFileMb' => Survey::MAX_FILE_MB,
+                'formulaFormats' => Formula::FORMATS,
+                'maxMaskLength' => Survey::MAX_MASK_LENGTH,
             ],
             'headerConfig' => [
                 'items' => $survey->headerItems(),

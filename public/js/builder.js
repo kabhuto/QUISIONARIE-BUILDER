@@ -82,6 +82,12 @@
             options: choiceTypes.includes(type) ? ['Pilihan 1', 'Pilihan 2'] : [],
             logic: null,
             validation: emptyValidation(),
+            options_from: '',
+            other_option: false,
+            other_label: '',
+            mask: '',
+            ...(type === 'calc' ? { formula: '', format: 'number', decimals: 0 } : {}),
+            ...(type === 'file' ? { file: { accept: 'image', max_mb: 5 } } : {}),
             ...(type === 'region' ? { region: defaultRegion(), label: 'Identitas wilayah' } : {}),
             ...(type === 'table' ? { table: defaultTable() } : {}),
             ...(rangeTypes.includes(type) ? { range: { ...config.rangeDefaults[type] } } : {}),
@@ -227,7 +233,22 @@
                 ? { conditions: { operator: 'and', rules: [normalizeRule(question.condition)] }, actions: ['show'] }
                 : normalizeLogic(question.logic),
             validation: normalizeValidation(question.validation),
+            options_from: choiceTypes.includes(question.type) ? String(question.options_from ?? '') : '',
+            other_option: Boolean(question.other_option),
+            other_label: String(question.other_label ?? ''),
+            mask: question.type === 'short' ? String(question.mask ?? '') : '',
         };
+        if (question.type === 'calc') {
+            normalized.formula = String(question.formula ?? '');
+            normalized.format = ['number', 'currency', 'percent'].includes(question.format) ? question.format : 'number';
+            normalized.decimals = clamp(question.decimals, 0, 6, 0);
+        }
+        if (question.type === 'file') {
+            normalized.file = {
+                accept: config.fileKinds[question.file?.accept] ? question.file.accept : 'image',
+                max_mb: clamp(question.file?.max_mb, 1, config.maxFileMb, 5),
+            };
+        }
         if (question.type === 'region') normalized.region = normalizeRegion(question.region);
         if (question.type === 'table') normalized.table = normalizeTable(question.table);
         if (rangeTypes.includes(question.type)) normalized.range = normalizeRange(question.type, question.range);
@@ -319,6 +340,119 @@
 
     function isSelected(kind, id) {
         return selected?.kind === kind && selected.id === id;
+    }
+
+
+    // ── Answer tags and formulas ───────────────────────────────────────────
+    // Tags are stored as {{question-id}} and shown as {{101}} (the question's number) while editing.
+
+    const TAG = /\{\{([A-Za-z0-9_-]+)(\|[^}]*)?\}\}/g;
+
+    function tagsToNumbers(text) {
+        return String(text ?? '').replace(TAG, (match, id, rest = '') => (numbers.has(id) ? `{{${numbers.get(id)}${rest}}}` : match));
+    }
+
+    function tagsToIds(text) {
+        const byNumber = new Map([...numbers].map(([id, number]) => [number, id]));
+        return String(text ?? '').replace(TAG, (match, key, rest = '') => (byNumber.has(key) ? `{{${byNumber.get(key)}${rest}}}` : match));
+    }
+
+    function tagIds(text) {
+        return [...String(text ?? '').matchAll(TAG)].map(match => match[1]);
+    }
+
+    const FORMULA_FUNCTIONS = { sum: [1, Infinity], avg: [1, Infinity], min: [1, Infinity], max: [1, Infinity], round: [1, 2], floor: [1, 1], ceil: [1, 1], abs: [1, 1], count: [1, 1], len: [1, 1], years: [1, 2], days: [2, 2], if: [3, 3] };
+
+    // Mirrors App\Support\Formula::parse(): a readable reason, or '' when the formula is fine.
+    function formulaSyntaxProblem(formula) {
+        if (!formula.trim()) return 'belum diisi';
+        const pattern = /\s*(?:\{\{([A-Za-z0-9_-]+)\}\}|(\d+(?:\.\d+)?)|([A-Za-z_]+)|(>=|<=|==|!=|<>|[-+*/%(),<>=])|"([^"]*)"|'([^']*)')/y;
+        const tokens = [];
+        let offset = 0;
+        while (offset < formula.length && formula.slice(offset).trim() !== '') {
+            pattern.lastIndex = offset;
+            const match = pattern.exec(formula);
+            if (!match) return `memuat karakter yang tidak dikenal: "${formula.slice(offset).trim().slice(0, 8)}"`;
+            offset = pattern.lastIndex;
+            if (match[1] !== undefined) tokens.push(['tag', match[1]]);
+            else if (match[2] !== undefined) tokens.push(['num', match[2]]);
+            else if (match[3] !== undefined) tokens.push(['name', match[3].toLowerCase()]);
+            else if (match[4] !== undefined) tokens.push(['op', match[4]]);
+            else tokens.push(['str', '']);
+        }
+        let position = 0;
+        const peek = () => tokens[position] ?? ['end', ''];
+        const expect = symbol => {
+            if (peek()[1] !== symbol) throw new Error(`kurang tanda "${symbol}"`);
+            position++;
+        };
+        const factor = () => {
+            const [kind, value] = tokens[position++] ?? ['end', ''];
+            if (kind === 'op' && (value === '-' || value === '+')) return factor();
+            if (['num', 'tag', 'str'].includes(kind)) return;
+            if (kind === 'op' && value === '(') {
+                comparison();
+                return expect(')');
+            }
+            if (kind === 'name') {
+                if (!FORMULA_FUNCTIONS[value]) throw new Error(`memakai fungsi "${value}" yang tidak dikenal`);
+                expect('(');
+                let count = 0;
+                if (peek()[1] !== ')') {
+                    do {
+                        comparison();
+                        count++;
+                    } while (peek()[1] === ',' && ++position);
+                }
+                expect(')');
+                if (count < FORMULA_FUNCTIONS[value][0] || count > FORMULA_FUNCTIONS[value][1]) throw new Error(`memanggil ${value}() dengan jumlah isian yang salah`);
+                return;
+            }
+            throw new Error(kind === 'end' ? 'berakhir sebelum selesai' : `memuat "${value}" di tempat yang salah`);
+        };
+        const loop = (next, operators) => () => {
+            next();
+            while (peek()[0] === 'op' && operators.includes(peek()[1])) {
+                position++;
+                next();
+            }
+        };
+        const term = loop(factor, ['*', '/', '%']);
+        const additive = loop(term, ['+', '-']);
+        const comparison = loop(additive, ['>', '<', '>=', '<=', '==', '!=', '<>', '=']);
+        try {
+            comparison();
+            if (position < tokens.length) return `memuat "${tokens[position][1]}" di tempat yang salah`;
+        } catch (error) {
+            return error.message;
+        }
+        return '';
+    }
+
+    // Formulas, answer tags and options taken from another question may only use earlier questions.
+    function dynamicProblem(question) {
+        const earlierIds = earlierQuestions('question', question.id).map(item => item.question.id);
+        if (question.type === 'calc') {
+            const problem = formulaSyntaxProblem(question.formula);
+            if (problem) return `Rumus ${problem}.`;
+            if (tagIds(question.formula).some(id => !earlierIds.includes(id))) return 'Rumus memakai tag jawaban dari pertanyaan yang tidak ada sebelumnya.';
+        }
+        if ([...tagIds(question.label), ...tagIds(question.description)].some(id => !earlierIds.includes(id))) return 'Teks memakai tag jawaban dari pertanyaan yang tidak ada sebelumnya.';
+        if (question.options_from) {
+            const source = findQuestion(question.options_from)?.question;
+            if (!source || source.type !== 'multiple' || !earlierIds.includes(source.id)) return 'Sumber pilihan harus pertanyaan pilihan ganda sebelumnya.';
+        }
+        if (question.other_option && question.options.includes('Lainnya')) return 'Hapus pilihan "Lainnya" dari daftar; opsi "Lainnya (sebutkan)" sudah otomatis.';
+        return '';
+    }
+
+    function tagPicker(target, question, label = 'Sisipkan jawaban…') {
+        const available = earlierQuestions('question', question.id);
+        if (!available.length) return '';
+        return `<select class="setting-select tag-picker" data-insert-tag="${target}" aria-label="Sisipkan tag jawaban">
+            <option value="">${escapeHtml(label)}</option>
+            ${available.map(item => `<option value="${escapeHtml(item.number)}">@${escapeHtml(questionLabel(item))}</option>`).join('')}
+        </select>`;
     }
 
     // ── Logic ──────────────────────────────────────────────────────────────
@@ -592,7 +726,7 @@
                 ${options.map(option => `<option value="${escapeHtml(option)}" ${option === rule.value ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}
             </select>`;
         }
-        const numeric = numericOperators.includes(rule.operator) || ['number', 'currency'].includes(source?.question.type);
+        const numeric = numericOperators.includes(rule.operator) || ['number', 'currency', 'calc'].includes(source?.question.type);
         return `<input class="setting-select" type="${numeric ? 'number' : 'text'}" step="any" maxlength="255" value="${escapeHtml(rule.value)}" placeholder="Nilai" data-rule-field="value" aria-label="Nilai">`;
     }
 
@@ -734,8 +868,11 @@
     }
 
     function previewFor(question) {
+        if (choiceTypes.includes(question.type) && question.options_from) {
+            return `<div class="dynamic-preview">⇠ Pilihan diambil dari jawaban pertanyaan ${escapeHtml(numbers.get(question.options_from) ?? '?')}</div>`;
+        }
         if (choiceTypes.includes(question.type)) {
-            const options = question.options.length ? question.options : ['Pilihan 1', 'Pilihan 2'];
+            const options = [...(question.options.length ? question.options : ['Pilihan 1', 'Pilihan 2']), ...(question.other_option ? [question.other_label || 'Lainnya (sebutkan)'] : [])];
             const branches = branchActions(question);
             if (question.type === 'dropdown') return `<div class="answer-line answer-select">${escapeHtml(question.placeholder || options[0])}<span>▾</span></div>${branches}`;
             return `<div class="choice-list">${options.map((option, index) => `<span class="choice-option ${question.type === 'multiple' ? 'multiple' : ''}"><i></i><b>${index + 1}.</b> ${escapeHtml(option)}</span>`).join('')}</div>${branches}`;
@@ -759,6 +896,10 @@
             case 'slider': return `<div class="range-preview is-slider">${question.range.min}<b></b>${question.range.max}</div>`;
             case 'matrix': return matrixPreview(question);
             case 'signature': return '<div class="sign-preview">Kotak tanda tangan responden</div>';
+            case 'time': return `<div class="answer-line">${escapeHtml(question.prefill || 'Jam __ : __')}</div>`;
+            case 'calc': return `<div class="dynamic-preview is-calc"><b>ƒx</b> ${escapeHtml(tagsToNumbers(question.formula) || 'Tulis rumus di panel kanan, mis. {{101}} + {{102}}')}</div>`;
+            case 'location': return '<div class="answer-line">📍 lintang, bujur — tombol “Ambil lokasi saat ini”</div>';
+            case 'file': return `<div class="sign-preview">⇪ Unggah ${escapeHtml((config.fileKinds[question.file?.accept]?.label ?? 'berkas').toLowerCase())} · maks. ${question.file?.max_mb ?? 5} MB</div>`;
             default: return `<div class="answer-line">${escapeHtml(hint || 'Jawaban...')}</div>`;
         }
     }
@@ -788,18 +929,18 @@
         const classes = ['question-row', `is-${question.type}`, isBranch && 'is-branch', question.hidden && !isBranch && 'is-hidden-field', isSelected('question', question.id) && 'is-selected', question.required && 'is-required'].filter(Boolean).join(' ');
         const subject = isInfo ? 'keterangan' : `pertanyaan ${number}`;
         const description = isInfo
-            ? `<textarea class="question-desc" rows="2" maxlength="1000" placeholder="Isi keterangan untuk responden" data-field="description">${escapeHtml(question.description)}</textarea>`
-            : `<input class="question-desc" type="text" maxlength="1000" value="${escapeHtml(question.description)}" placeholder="Petunjuk pengisian (opsional)" data-field="description">`;
+            ? `<textarea class="question-desc" rows="2" maxlength="1000" placeholder="Isi keterangan untuk responden" data-field="description">${escapeHtml(tagsToNumbers(question.description))}</textarea>`
+            : `<input class="question-desc" type="text" maxlength="1000" value="${escapeHtml(tagsToNumbers(question.description))}" placeholder="Petunjuk pengisian (opsional)" data-field="description">`;
         return `
             <article class="${classes}" data-question-id="${escapeHtml(question.id)}">
                 <span class="drag-handle" data-drag-handle title="Seret untuk memindahkan">⠿</span>
                 <span class="question-number">${isInfo ? 'i' : number}</span>
                 <div class="question-main">
-                    <input class="question-label" type="text" maxlength="255" value="${escapeHtml(question.label)}" placeholder="${isInfo ? 'Judul keterangan' : 'Tulis pertanyaan...'}" data-field="label" aria-label="Teks ${subject}">
+                    <input class="question-label" type="text" maxlength="255" value="${escapeHtml(tagsToNumbers(question.label))}" placeholder="${isInfo ? 'Judul keterangan' : 'Tulis pertanyaan... (sisipkan jawaban dengan {{101}})'}" data-field="label" aria-label="Teks ${subject}">
                     ${description}
                     <span class="logic-slot">${logicBadge('question', question.id)}</span>
                     <div class="question-preview">${previewFor(question)}</div>
-                    ${choiceTypes.includes(question.type) ? `<label class="option-editor"><span>PILIHAN</span><textarea data-field="options" aria-label="Pilihan jawaban, satu per baris" placeholder="Satu pilihan per baris">${escapeHtml(question.options.join('\n'))}</textarea></label>` : ''}
+                    ${choiceTypes.includes(question.type) && !question.options_from ? `<label class="option-editor"><span>PILIHAN</span><textarea data-field="options" aria-label="Pilihan jawaban, satu per baris" placeholder="Satu pilihan per baris">${escapeHtml(question.options.join('\n'))}</textarea></label>` : ''}
                     ${question.type === 'matrix' ? `<div class="matrix-editor">
                         <label class="option-editor"><span>BARIS</span><textarea data-field="matrix-rows" aria-label="Baris matriks, satu per baris" placeholder="Satu pernyataan per baris">${escapeHtml(question.matrix.rows.join('\n'))}</textarea></label>
                         <label class="option-editor"><span>KOLOM</span><textarea data-field="matrix-columns" aria-label="Kolom pilihan matriks, satu per baris" placeholder="Satu pilihan per baris">${escapeHtml(question.matrix.columns.join('\n'))}</textarea></label>
@@ -915,8 +1056,43 @@
         const prefillControl = ['single', 'dropdown'].includes(question.type)
             ? `<select class="setting-select" data-option="prefill"><option value="">(tanpa nilai awal)</option>${question.options.map(option => `<option value="${escapeHtml(option)}" ${option === question.prefill ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select>`
             : `<input class="setting-select" type="${question.type === 'date' ? 'date' : (['number', 'currency'].includes(question.type) ? 'number' : 'text')}" maxlength="255" value="${escapeHtml(question.prefill)}" data-option="prefill">`;
+        const multipleSources = earlierQuestions('question', question.id).filter(item => item.question.type === 'multiple');
+        const dynamicSettings = [
+            choiceTypes.includes(question.type) ? `
+                <label class="setting-field"><span>Sumber pilihan</span>
+                    <select class="setting-select" data-option="options_from">
+                        <option value="">Ditulis di lembar</option>
+                        ${multipleSources.map(item => `<option value="${escapeHtml(item.question.id)}" ${item.question.id === question.options_from ? 'selected' : ''}>Jawaban ${escapeHtml(questionLabel(item))}</option>`).join('')}
+                    </select>
+                </label>
+                ${multipleSources.length ? '' : '<p class="setting-note">Pilihan bisa diambil dari jawaban pertanyaan “Pilihan lebih dari satu” sebelumnya, mis. “Dari hobi yang dipilih, mana yang paling disukai?”.</p>'}
+                ${question.options_from ? '' : `<label class="required-toggle"><input type="checkbox" data-option="other_option" ${question.other_option ? 'checked' : ''}><span class="toggle-track"></span><span>Tambah opsi “Lainnya (sebutkan)”</span></label>
+                ${question.other_option ? `<label class="setting-field"><span>Teks opsi lainnya</span><input class="setting-select" type="text" maxlength="60" value="${escapeHtml(question.other_label)}" placeholder="Lainnya (sebutkan)" data-option="other_label"></label>` : ''}`}` : '',
+            question.type === 'short' ? `
+                <label class="setting-field"><span>Format isian (masking) <small>9 angka · a huruf · * huruf/angka</small></span>
+                    <input class="setting-select mono-input" type="text" maxlength="${config.maxMaskLength}" value="${escapeHtml(question.mask)}" placeholder="mis. 99.99.99.9999 atau aa-9999" list="mask-presets" data-option="mask">
+                    <datalist id="mask-presets"><option value="9999999999999999">NIK (16 digit)</option><option value="99999">KBLI / kode pos (5 digit)</option><option value="99.99.99.9999">Kode wilayah desa</option><option value="aa-9999">Huruf-angka</option></datalist>
+                </label>` : '',
+            question.type === 'calc' ? `
+                <label class="setting-field"><span>Rumus</span>
+                    <textarea class="setting-select setting-textarea mono-input" rows="3" maxlength="500" placeholder="mis. {{101}} + {{102}}" data-option="formula">${escapeHtml(tagsToNumbers(question.formula))}</textarea>
+                </label>
+                ${tagPicker('formula', question, 'Sisipkan jawaban ke rumus…')}
+                <p class="setting-note">Operasi + − × (*) ÷ (/) % dan perbandingan &gt; &lt; = (hasil 1/0). Fungsi: sum, avg, min, max, round(x, desimal), floor, ceil, abs, count (jumlah pilihan), len, years(tgl) untuk umur, days(tgl1, tgl2), if(syarat, ya, tidak). Jawaban kosong dihitung 0.</p>
+                <div class="setting-pair">
+                    <label class="setting-field"><span>Tampilan</span><select class="setting-select" data-option="format">${Object.entries(config.formulaFormats).map(([value, label]) => `<option value="${value}" ${question.format === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></label>
+                    <label class="setting-field"><span>Desimal</span><input class="setting-select" type="number" min="0" max="6" value="${question.decimals}" data-option="decimals"></label>
+                </div>` : '',
+            question.type === 'file' ? `
+                <div class="setting-pair">
+                    <label class="setting-field"><span>Jenis berkas</span><select class="setting-select" data-option="file_accept">${Object.entries(config.fileKinds).map(([value, kind]) => `<option value="${value}" ${question.file.accept === value ? 'selected' : ''}>${escapeHtml(kind.label)}</option>`).join('')}</select></label>
+                    <label class="setting-field"><span>Maks. MB</span><input class="setting-select" type="number" min="1" max="${config.maxFileMb}" value="${question.file.max_mb}" data-option="file_max_mb"></label>
+                </div>` : '',
+        ].join('');
+        const problem = dynamicProblem(question);
         return `
-            <label class="setting-field"><span>Nama isian</span><input class="setting-select" type="text" maxlength="255" value="${escapeHtml(question.label)}" data-option="label"></label>
+            <label class="setting-field"><span>Nama isian</span><input class="setting-select" type="text" maxlength="255" value="${escapeHtml(tagsToNumbers(question.label))}" data-option="label"></label>
+            ${isInfo ? '' : tagPicker('label', question, 'Sisipkan jawaban ke teks pertanyaan…')}
             <div class="flag-toggles">
                 ${isInfo ? '' : flagButton(question, 'required', 'Wajib', '✱')}
                 ${flagButton(question, 'hidden', 'Tersembunyi', '◌')}
@@ -934,6 +1110,8 @@
             ${question.type === 'region' ? `<div class="type-settings">${regionSettings(question)}</div>` : ''}
             ${question.type === 'table' ? `<div class="type-settings">${tableSettings(question)}</div>` : ''}
             ${rangeTypes.includes(question.type) ? `<div class="type-settings">${rangeSettings(question)}</div>` : ''}
+            ${dynamicSettings ? `<div class="type-settings"><div class="setting-label"><span>Isian dinamis</span></div>${dynamicSettings}</div>` : ''}
+            <p class="setting-note is-warning" data-dynamic-problem ${problem ? '' : 'hidden'}>${escapeHtml(problem)}</p>
             <div class="option-section">
                 <div class="setting-label"><span>Kustomisasi</span></div>
                 ${isInfo ? '' : `<label class="required-toggle"><input type="checkbox" data-option="hide_label" ${question.hide_label ? 'checked' : ''}><span class="toggle-track"></span><span>Sembunyikan nama isian</span></label>`}
@@ -944,7 +1122,7 @@
                         ${Object.entries(config.fieldWidths).map(([width, label]) => `<label><input class="sr-only" type="radio" name="width-${escapeHtml(question.id)}" value="${width}" data-option="width" ${question.width === width ? 'checked' : ''}><span>${escapeHtml(label)}</span></label>`).join('')}
                     </div>
                 </div>
-                <label class="setting-field"><span>${isInfo ? 'Isi keterangan' : 'Teks bantuan'}</span><textarea class="setting-select setting-textarea" rows="3" maxlength="1000" data-option="description">${escapeHtml(question.description)}</textarea></label>
+                <label class="setting-field"><span>${isInfo ? 'Isi keterangan' : 'Teks bantuan'}</span><textarea class="setting-select setting-textarea" rows="3" maxlength="1000" data-option="description">${escapeHtml(tagsToNumbers(question.description))}</textarea></label>
                 ${isInfo || ['region', 'table', 'matrix'].includes(question.type) ? '' : `<div class="setting-field"><span>Posisi teks bantuan</span>
                     <div class="segmented">
                         <label><input class="sr-only" type="radio" name="help-${escapeHtml(question.id)}" value="below" data-option="help_position" ${question.help_position === 'below' ? 'checked' : ''}><span>Di bawah isian</span></label>
@@ -1183,10 +1361,14 @@
         if (noCodeTypes.includes(type)) question.code_length = 0;
         if (nonLogicTypes.includes(type)) clearConditionsOn([question.id]);
         if (!config.prefillTypes.includes(type)) question.prefill = '';
-        if (type === 'info') {
+        if (type === 'info' || type === 'calc') {
             question.required = false;
             question.disabled = false;
         }
+        if (type === 'calc' && question.formula === undefined) Object.assign(question, { formula: '', format: 'number', decimals: 0 });
+        if (type === 'file' && !question.file) question.file = { accept: 'image', max_mb: 5 };
+        if (!choiceTypes.includes(type)) Object.assign(question, { options_from: '', other_option: false });
+        if (type !== 'short') question.mask = '';
         question.validation.rules = question.validation.rules.filter(rule => config.validationRules[rule.type].types.includes(type));
     }
 
@@ -1320,12 +1502,12 @@
         if (!found) return;
         const panelField = name => (isSelected('question', found.question.id) ? selectionPanel.querySelector(`[data-option="${name}"]`) : null);
         if (field === 'label') {
-            found.question.label = event.target.value;
+            found.question.label = tagsToIds(event.target.value);
             const mirror = panelField('label');
             if (mirror) mirror.value = event.target.value;
         }
         if (field === 'description') {
-            found.question.description = event.target.value;
+            found.question.description = tagsToIds(event.target.value);
             const mirror = panelField('description');
             if (mirror) mirror.value = event.target.value;
         }
@@ -1361,7 +1543,18 @@
         const option = target.dataset.option;
         if (option && target.matches('input[type="text"], input[type="number"], input[type="date"], textarea')) {
             if (option === 'max_length') question.max_length = target.value ? clamp(target.value, 1, 5000, null) : null;
+            else if (option === 'decimals') question.decimals = clamp(target.value, 0, 6, 0);
+            else if (option === 'file_max_mb') question.file.max_mb = clamp(target.value, 1, config.maxFileMb, 5);
+            else if (['label', 'description', 'formula'].includes(option)) question[option] = tagsToIds(target.value);
             else question[option] = target.value;
+            if (['formula', 'mask', 'other_label', 'file_max_mb'].includes(option)) {
+                refreshPreview(question);
+                const note = selectionPanel.querySelector('[data-dynamic-problem]');
+                if (note) {
+                    note.textContent = dynamicProblem(question);
+                    note.hidden = !note.textContent;
+                }
+            }
             if (option === 'label' || option === 'description') {
                 const mirror = blockList.querySelector(`[data-question-id="${CSS.escape(question.id)}"] [data-field="${option}"]`);
                 if (mirror) mirror.value = target.value;
@@ -1454,6 +1647,31 @@
         if (option === 'hide_label') {
             question.hide_label = target.checked;
             return afterPanelChange(question);
+        }
+        if (option === 'options_from' || option === 'other_option') {
+            if (option === 'options_from') question.options_from = target.value;
+            else question.other_option = target.checked;
+            if (question.options_from) question.other_option = false;
+            render();
+            return;
+        }
+        if (option === 'format' || option === 'file_accept') {
+            if (option === 'format') question.format = target.value;
+            else question.file.accept = target.value;
+            return afterPanelChange(question, { preview: true });
+        }
+        const tagTarget = target.dataset.insertTag;
+        if (tagTarget && target.value) {
+            const field = selectionPanel.querySelector(`[data-option="${tagTarget}"]`);
+            const tag = `{{${target.value}}}`;
+            const start = field.selectionStart ?? field.value.length;
+            const end = field.selectionEnd ?? field.value.length;
+            field.value = `${field.value.slice(0, start)}${tag}${field.value.slice(end)}`;
+            target.value = '';
+            field.focus();
+            field.setSelectionRange(start + tag.length, start + tag.length);
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            return;
         }
         if (option === 'width' || option === 'help_position' || (option === 'prefill' && target.tagName === 'SELECT')) {
             question[option] = target.value;
@@ -1897,7 +2115,7 @@
             if (new Set(rows).size < rows.length || new Set(columns).size < columns.length) return 'Baris dan kolom matriks tidak boleh kembar.';
             if (rows.length > config.maxMatrixRows || columns.length > config.maxMatrixColumns) return `Matriks maksimal ${config.maxMatrixRows} baris dan ${config.maxMatrixColumns} kolom.`;
         }
-        return logicProblem(question) || validationProblemOf(question);
+        return dynamicProblem(question) || logicProblem(question) || validationProblemOf(question);
     }
 
     function findProblem() {

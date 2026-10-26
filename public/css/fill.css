@@ -233,3 +233,15 @@ textarea.fill-input{resize:vertical;min-height:84px}
 .has-error .sign-pad canvas{border-color:var(--danger)}
 .is-disabled .sign-pad canvas{background:var(--soft);cursor:not-allowed}
 .sign-pad-foot{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:6px;font-size:12px;color:var(--muted)}
+/* Dynamic answers: quoted answers, calculations, "Lainnya", masks, locations, uploads */
+.fill-pipe{font-weight:700;color:var(--accent,#f26b1d);border-bottom:1px dashed currentColor}
+.fill-pipe.is-empty{color:#8a9aa6;font-weight:500}
+.cawi-calc{display:inline-flex;align-items:center;min-width:140px;min-height:40px;padding:8px 14px;border:1px dashed #b9c7cf;border-radius:8px;background:#f5f8fa;font-weight:700;font-size:15px;color:#1d3340;font-variant-numeric:tabular-nums}
+.cawi-other{margin-top:8px;max-width:420px}
+.cawi-option.is-other span{font-style:italic}
+.cawi-masked{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;max-width:320px}
+.cawi-location{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cawi-location .fill-input{flex:1 1 240px}
+.cawi-location .fill-hint{flex-basis:100%;margin:0}
+.cawi-file input[type="file"]{padding:8px;background:#fff}
+.cawi-file-preview{display:block;max-width:220px;max-height:160px;margin-top:8px;border-radius:8px;border:1px solid #dbe3e8;object-fit:cover}

@@ -92,7 +92,7 @@
                             <th scope="col">No</th>
                             <th scope="col">Waktu kirim</th>
                             @foreach ($previewQuestions as $question)
-                                <th scope="col">{{ $question['number'] }} {{ $question['label'] }}</th>
+                                <th scope="col">{{ $question['number'] }} {{ $question['text'] }}</th>
                             @endforeach
                             <th scope="col"><span class="sr-only">Aksi</span></th>
                         </tr>

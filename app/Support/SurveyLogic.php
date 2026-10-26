@@ -68,7 +68,17 @@ class SurveyLogic
             'options' => [],
             'logic' => null,
             'validation' => [],
+            'options_from' => '',
+            'other_option' => false,
+            'other_label' => '',
+            'mask' => '',
         ];
+        if (($question['type'] ?? null) === 'calc') {
+            $question += ['formula' => '', 'format' => 'number', 'decimals' => 0];
+        }
+        if (($question['type'] ?? null) === 'file') {
+            $question += ['file' => ['accept' => 'image', 'max_mb' => 5]];
+        }
         $question['validation'] = (is_array($question['validation']) ? $question['validation'] : []) + ['rules' => [], 'message' => '', 'checks' => []];
 
         if (is_array($legacy) && ($legacy['question_id'] ?? null) && ! $question['logic']) {
@@ -116,16 +126,17 @@ class SurveyLogic
 
     /**
      * The states, plus the answer of every visible question as the logic sees it
-     * (a disabled question holds its pre-filled value).
+     * (a disabled question holds its pre-filled value, a calculated one its result).
      *
      * @param  array<int, array<string, mixed>>  $blocks
      * @param  array<string, mixed>  $answers
-     * @return array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>}
+     * @return array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>, computed: array<string, string>}
      */
     public static function analyse(array $blocks, array $answers): array
     {
         $known = [];
         $states = [];
+        $computed = [];
 
         foreach ($blocks as $block) {
             $blockVisible = self::passes($block['condition'] ?? null, $known);
@@ -143,20 +154,36 @@ class SurveyLogic
                     $state = self::apply($logic['actions'] ?? [], $state);
                 }
 
-                if ($question['type'] === 'info' || $state['hidden'] || $state['disabled']) {
+                if (in_array($question['type'], ['info', ...Survey::COMPUTED_TYPES], true) || $state['hidden'] || $state['disabled']) {
                     $state['required'] = false;
                 }
 
                 $states[$question['id']] = $state;
 
-                if (! $state['hidden']) {
-                    // A disabled field cannot be changed by the respondent, so it holds its pre-filled value.
-                    $known[$question['id']] = $state['disabled'] ? ($question['prefill'] ?: null) : ($answers[$question['id']] ?? null);
+                if ($state['hidden']) {
+                    continue;
+                }
+
+                if ($question['type'] === 'calc') {
+                    $result = Formula::result($question, $known);
+                    $known[$question['id']] = $result;
+                    if ($result !== null) {
+                        $computed[$question['id']] = $result;
+                    }
+
+                    continue;
+                }
+
+                // A disabled field cannot be changed by the respondent, so it holds its pre-filled value.
+                $known[$question['id']] = $state['disabled'] ? ($question['prefill'] ?: null) : ($answers[$question['id']] ?? null);
+
+                if (Survey::hasOtherOption($question) && ! $state['disabled']) {
+                    $known[$question['id'].Survey::OTHER_SUFFIX] = $answers[$question['id'].Survey::OTHER_SUFFIX] ?? null;
                 }
             }
         }
 
-        return ['states' => $states, 'known' => $known];
+        return ['states' => $states, 'known' => $known, 'computed' => $computed];
     }
 
     /**

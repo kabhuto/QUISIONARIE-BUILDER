@@ -8,6 +8,7 @@
         'number' => ['#', 'icon-number'],
         'currency' => ['Rp', 'icon-number'],
         'date' => ['▦', 'icon-date'],
+        'time' => ['◷', 'icon-date'],
         'email' => ['@', 'icon-number'],
         'phone' => ['☏', 'icon-date'],
         'url' => ['↗', 'icon-text'],
@@ -20,6 +21,9 @@
         'signature' => ['✎', 'icon-paragraph'],
         'region' => ['⌖', 'icon-block'],
         'table' => ['▦▦', 'icon-code'],
+        'calc' => ['ƒx', 'icon-number'],
+        'location' => ['⌾', 'icon-block'],
+        'file' => ['⇪', 'icon-paragraph'],
         'info' => ['i', 'icon-paragraph'],
     ];
     $isNew = ! $survey->exists;

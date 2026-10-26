@@ -7,15 +7,24 @@ use App\Support\FieldValidation;
 use App\Support\SurveyLogic;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class SubmitSurveyResponseRequest extends FormRequest
 {
     /**
-     * @var array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>}|null
+     * @var array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>, computed: array<string, string>}|null
      */
     private ?array $analysis = null;
+
+    /**
+     * Paths of the files stored by answers(), so a request stores each upload once.
+     *
+     * @var array<string, string>
+     */
+    private array $storedFiles = [];
 
     /**
      * Consistency warnings the respondent confirmed, stored with the response.
@@ -64,11 +73,21 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
-     * @return array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>}
+     * @return array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>, computed: array<string, string>}
      */
     private function analysis(): array
     {
-        return $this->analysis ??= SurveyLogic::analyse($this->survey()->blocks, (array) $this->input('answers', []));
+        return $this->analysis ??= SurveyLogic::analyse($this->survey()->blocks, $this->submittedAnswers());
+    }
+
+    /**
+     * The submitted answers, uploaded files included.
+     *
+     * @return array<string, mixed>
+     */
+    private function submittedAnswers(): array
+    {
+        return (array) ($this->all()['answers'] ?? []);
     }
 
     /**
@@ -80,7 +99,8 @@ class SubmitSurveyResponseRequest extends FormRequest
     {
         return array_values(array_filter(
             $this->survey()->questions(),
-            fn (array $question): bool => ! ($this->states()[$question['id']]['hidden'] ?? true) && ! $this->states()[$question['id']]['disabled'],
+            fn (array $question): bool => ! ($this->states()[$question['id']]['hidden'] ?? true) && ! $this->states()[$question['id']]['disabled']
+                && ! in_array($question['type'], Survey::COMPUTED_TYPES, true),
         ));
     }
 
@@ -152,6 +172,11 @@ class SubmitSurveyResponseRequest extends FormRequest
             }
 
             $maxLength = fn (int $limit): string => 'max:'.min($limit, $question['max_length'] ?: $limit);
+            $options = Survey::optionsFor($question, $this->analysis()['known']);
+            if (Survey::hasOtherOption($question)) {
+                $options[] = Survey::OTHER_VALUE;
+                $rules["{$key}".Survey::OTHER_SUFFIX] = ['nullable', 'string', 'max:255'];
+            }
 
             $rules[$key] = match ($question['type']) {
                 'long' => [$presence, 'string', $maxLength(5000)],
@@ -161,18 +186,22 @@ class SubmitSurveyResponseRequest extends FormRequest
                 'number' => [$presence, 'numeric'],
                 'currency' => [$presence, 'digits_between:1,18'],
                 'date' => [$presence, 'date'],
+                'time' => [$presence, 'date_format:H:i'],
+                'location' => [$presence, 'string', 'max:80', $this->locationRule($question)],
+                'file' => [$presence, $this->fileRule($question)],
                 'email' => [$presence, 'email', 'max:160'],
                 'phone' => [$presence, 'regex:/^[0-9+\-\s().]{6,20}$/'],
                 'code' => $question['code_length'] > 0
                     ? [$presence, 'digits:'.$question['code_length']]
                     : [$presence, 'string', 'max:50'],
-                'single', 'dropdown' => [$presence, 'string', Rule::in($question['options'])],
+                'single', 'dropdown' => [$presence, 'string', Rule::in($options)],
+                'short' => [$presence, 'string', $maxLength(255), ...($question['mask'] !== '' ? [$this->maskRule($question)] : [])],
                 'multiple' => [$presence, 'array', ...($this->isRequired($question) ? ['min:1'] : [])],
                 default => [$presence, 'string', $maxLength(255)],
             };
 
             if ($question['type'] === 'multiple') {
-                $rules[$key.'.*'] = ['string', Rule::in($question['options'])];
+                $rules[$key.'.*'] = ['string', Rule::in($options)];
             }
         }
 
@@ -190,7 +219,65 @@ class SubmitSurveyResponseRequest extends FormRequest
             $range = $question['range'];
 
             if (is_numeric($value) && ((int) $value - $range['min']) % $range['step'] !== 0) {
-                $fail("{$question['label']} harus kelipatan {$range['step']} dari {$range['min']}.");
+                $fail("{$question['text']} harus kelipatan {$range['step']} dari {$range['min']}.");
+            }
+        };
+    }
+
+    /**
+     * Masked answers (e.g. "99.99.999") must match their mask exactly.
+     *
+     * @param  array<string, mixed>  $question
+     */
+    private function maskRule(array $question): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail) use ($question): void {
+            if (is_string($value) && ! preg_match(Survey::maskPattern($question['mask']), $value)) {
+                $fail("{$question['text']} harus sesuai format {$question['mask']}.");
+            }
+        };
+    }
+
+    /**
+     * A location is "latitude, longitude" in decimal degrees.
+     *
+     * @param  array<string, mixed>  $question
+     */
+    private function locationRule(array $question): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail) use ($question): void {
+            if (! is_string($value) || ! preg_match('/^(-?\d{1,2}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/', trim($value), $match)
+                || abs((float) $match[1]) > 90 || abs((float) $match[2]) > 180) {
+                $fail("{$question['text']} harus berupa koordinat \"lintang, bujur\", mis. -7.0321, 112.7464.");
+            }
+        };
+    }
+
+    /**
+     * An upload of an accepted kind and size, or a file already stored for this survey.
+     *
+     * @param  array<string, mixed>  $question
+     */
+    private function fileRule(array $question): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail) use ($question): void {
+            if (Survey::isUploadPath($value) && str_starts_with($value, 'uploads/'.$this->survey()->id.'/')) {
+                return;
+            }
+            if (! $value instanceof UploadedFile || ! $value->isValid()) {
+                $fail("{$question['text']} gagal diunggah. Pilih berkasnya lagi.");
+
+                return;
+            }
+
+            $extensions = Survey::fileExtensions($question);
+            $extension = strtolower($value->getClientOriginalExtension());
+            $maxMb = $question['file']['max_mb'] ?? 5;
+
+            if (! in_array($extension, $extensions, true) || ! in_array(strtolower((string) $value->guessExtension()), [...$extensions, 'jpg', 'bin', 'zip', 'txt', 'xml'], true)) {
+                $fail("{$question['text']} harus berupa berkas ".implode(', ', $extensions).'.');
+            } elseif ($value->getSize() > $maxMb * 1024 * 1024) {
+                $fail("{$question['text']} maksimal {$maxMb} MB.");
             }
         };
     }
@@ -202,7 +289,7 @@ class SubmitSurveyResponseRequest extends FormRequest
     {
         return function (string $attribute, mixed $value, Closure $fail) use ($question): void {
             if (! Survey::isSignatureImage($value)) {
-                $fail("{$question['label']} tidak terbaca. Ulangi tanda tangan.");
+                $fail("{$question['text']} tidak terbaca. Ulangi tanda tangan.");
             }
         };
     }
@@ -221,14 +308,21 @@ class SubmitSurveyResponseRequest extends FormRequest
                     $key = 'answers.'.$question['id'];
 
                     if ($question['type'] === 'table' && $this->isRequired($question) && $this->tableRows($question) === []) {
-                        $validator->errors()->add($key, $question['label'].' wajib diisi minimal satu baris.');
+                        $validator->errors()->add($key, $question['text'].' wajib diisi minimal satu baris.');
                     }
 
                     if ($question['type'] === 'matrix' && $this->isRequired($question) && in_array('', $this->matrixAnswer($question) ?: [''], true)) {
-                        $validator->errors()->add($key, $question['label'].' wajib diisi pada setiap baris.');
+                        $validator->errors()->add($key, $question['text'].' wajib diisi pada setiap baris.');
                     }
 
                     if ($validator->errors()->has($key) || $validator->errors()->has($key.'.*')) {
+                        continue;
+                    }
+
+                    if (Survey::hasOtherOption($question) && in_array(Survey::OTHER_VALUE, (array) $this->input($key), true)
+                        && trim((string) $this->input($key.Survey::OTHER_SUFFIX)) === '') {
+                        $validator->errors()->add($key, 'Sebutkan jawaban "'.Survey::OTHER_VALUE.'" untuk '.$question['text'].'.');
+
                         continue;
                     }
 
@@ -288,18 +382,18 @@ class SubmitSurveyResponseRequest extends FormRequest
 
         foreach ($this->survey()->questions() as $question) {
             $key = 'answers.'.$question['id'];
-            $attributes[$key] = $question['label'];
+            $attributes[$key] = $question['text'];
 
             foreach (Survey::regionFields($question) as $field) {
                 $attributes["{$key}.{$field['key']}"] = $field['label'];
             }
 
             foreach ($question['table']['columns'] ?? [] as $column) {
-                $attributes["{$key}.*.{$column['id']}"] = $question['label'].' – '.$column['label'];
+                $attributes["{$key}.*.{$column['id']}"] = $question['text'].' – '.$column['label'];
             }
 
             foreach ($question['matrix']['rows'] ?? [] as $index => $row) {
-                $attributes["{$key}.{$index}"] = $question['label'].' – '.$row;
+                $attributes["{$key}.{$index}"] = $question['text'].' – '.$row;
             }
         }
 
@@ -340,11 +434,18 @@ class SubmitSurveyResponseRequest extends FormRequest
      */
     public function answers(): array
     {
-        $submitted = (array) $this->input('answers', []);
+        $submitted = $this->submittedAnswers();
         $editable = array_column($this->editableQuestions(), 'id', 'id');
+        $computed = $this->analysis()['computed'];
         $answers = [];
 
         foreach ($this->survey()->questions() as $question) {
+            if (isset($computed[$question['id']])) {
+                $answers[$question['id']] = $computed[$question['id']];
+
+                continue;
+            }
+
             if (! isset($editable[$question['id']])) {
                 if (($question['prefill'] ?? '') !== '' && ! in_array($question['type'], ['region', 'table', 'multiple'], true)) {
                     $answers[$question['id']] = $question['prefill'];
@@ -357,16 +458,47 @@ class SubmitSurveyResponseRequest extends FormRequest
                 'region' => $this->regionAnswer($question, (array) ($submitted[$question['id']] ?? [])),
                 'table' => $this->tableRows($question),
                 'matrix' => $this->matrixAnswer($question),
-                'multiple' => array_values(array_intersect($question['options'], (array) ($submitted[$question['id']] ?? []))),
+                'multiple' => array_values(array_intersect(
+                    [...Survey::optionsFor($question, $this->analysis()['known']), ...(Survey::hasOtherOption($question) ? [Survey::OTHER_VALUE] : [])],
+                    (array) ($submitted[$question['id']] ?? []),
+                )),
+                'file' => $this->storedFile($question, $submitted[$question['id']] ?? null),
+                'location' => preg_replace('/\s*,\s*/', ', ', trim((string) ($submitted[$question['id']] ?? ''))),
                 default => trim((string) ($submitted[$question['id']] ?? '')),
             };
 
             if ($answer !== '' && $answer !== []) {
                 $answers[$question['id']] = $answer;
             }
+
+            $other = trim((string) ($submitted[$question['id'].Survey::OTHER_SUFFIX] ?? ''));
+            if (Survey::hasOtherOption($question) && $other !== '' && in_array(Survey::OTHER_VALUE, (array) $answer, true)) {
+                $answers[$question['id'].Survey::OTHER_SUFFIX] = $other;
+            }
         }
 
         return $answers;
+    }
+
+    /**
+     * Stores an uploaded file under the survey's upload folder; a file stored earlier keeps its path.
+     *
+     * @param  array<string, mixed>  $question
+     */
+    private function storedFile(array $question, mixed $value): string
+    {
+        if (Survey::isUploadPath($value)) {
+            return $value;
+        }
+        if (! $value instanceof UploadedFile) {
+            return '';
+        }
+
+        return $this->storedFiles[$question['id']] ??= $value->storeAs(
+            'uploads/'.$this->survey()->id,
+            Str::lower(Str::random(32)).'.'.strtolower($value->getClientOriginalExtension()),
+            'public',
+        );
     }
 
     /**

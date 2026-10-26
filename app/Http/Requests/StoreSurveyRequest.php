@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Survey;
 use App\Support\FieldValidation;
+use App\Support\Formula;
 use App\Support\SurveyLogic;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
@@ -124,6 +125,16 @@ class StoreSurveyRequest extends FormRequest
             "{$question}.validation.rules" => ['sometimes', 'array', 'max:'.FieldValidation::MAX_RULES],
             "{$question}.validation.message" => ['nullable', 'string', 'max:255'],
             "{$question}.validation.checks" => ['sometimes', 'array', 'max:'.FieldValidation::MAX_CHECKS],
+            "{$question}.options_from" => ['nullable', 'string', 'max:80', self::ID_PATTERN],
+            "{$question}.other_option" => ['sometimes', 'boolean'],
+            "{$question}.other_label" => ['nullable', 'string', 'max:60'],
+            "{$question}.mask" => ['nullable', 'string', 'max:'.Survey::MAX_MASK_LENGTH],
+            "{$question}.formula" => ['nullable', 'string', 'max:'.Formula::MAX_LENGTH],
+            "{$question}.format" => ['sometimes', Rule::in(array_keys(Formula::FORMATS))],
+            "{$question}.decimals" => ['sometimes', 'integer', 'between:0,6'],
+            "{$question}.file" => ['nullable', 'array'],
+            "{$question}.file.accept" => ['sometimes', Rule::in(array_keys(Survey::FILE_KINDS))],
+            "{$question}.file.max_mb" => ['sometimes', 'integer', 'between:1,'.Survey::MAX_FILE_MB],
 
             "{$question}.region" => ['nullable', 'array'],
             "{$question}.region.fields" => ['sometimes', 'array'],
@@ -273,6 +284,7 @@ class StoreSurveyRequest extends FormRequest
                 $subject = isset($numbers[$question['id']]) ? "pertanyaan {$numbers[$question['id']]}" : 'keterangan';
                 $key = "blocks.{$blockIndex}.questions.{$questionIndex}";
                 $this->checkLogic($validator, $question, $earlierQuestions, "{$key}.logic", $subject);
+                $this->checkDynamicAnswers($validator, $question, $earlierQuestions, $key, $subject);
                 $self = in_array($question['type'], Survey::NON_LOGIC_TYPES, true) ? [] : [$question['id'] => $question];
                 $this->checkValidationRules($validator, $question, $earlierQuestions + $self, "{$key}.validation", $subject);
 
@@ -309,6 +321,42 @@ class StoreSurveyRequest extends FormRequest
 
         if ($problem !== null) {
             $validator->errors()->add($key, 'Logika '.$subject.' '.$problem.'.');
+        }
+    }
+
+    /**
+     * Formulas, answer tags in the text and options taken from another question may only use earlier questions.
+     *
+     * @param  array<string, mixed>  $question
+     * @param  array<string, array<string, mixed>>  $earlierQuestions
+     */
+    private function checkDynamicAnswers(Validator $validator, array $question, array $earlierQuestions, string $key, string $subject): void
+    {
+        $earlierIds = array_keys($earlierQuestions);
+        $label = ucfirst($subject);
+
+        if ($question['type'] === 'calc' && ($problem = Formula::problem((string) ($question['formula'] ?? ''), $earlierIds))) {
+            $validator->errors()->add("{$key}.formula", "Rumus {$subject} {$problem}.");
+        }
+
+        foreach (['label' => 'Teks', 'description' => 'Teks bantuan'] as $field => $name) {
+            if (array_diff(SurveyLogic::mentions((string) ($question[$field] ?? '')), $earlierIds) !== []) {
+                $validator->errors()->add("{$key}.{$field}", "{$name} {$subject} memakai tag jawaban dari pertanyaan yang tidak ada sebelumnya.");
+            }
+        }
+
+        if (! in_array($question['type'], Survey::CHOICE_TYPES, true)) {
+            return;
+        }
+
+        $source = (string) ($question['options_from'] ?? '');
+
+        if ($source !== '' && ($earlierQuestions[$source]['type'] ?? null) !== 'multiple') {
+            $validator->errors()->add("{$key}.options_from", "{$label} hanya dapat mengambil pilihan dari pertanyaan pilihan ganda sebelumnya.");
+        }
+
+        if ($source === '' && ! empty($question['other_option']) && in_array(Survey::OTHER_VALUE, (array) ($question['options'] ?? []), true)) {
+            $validator->errors()->add("{$key}.options", "{$label} sudah memakai opsi \"Lainnya (sebutkan)\" otomatis; hapus pilihan \"".Survey::OTHER_VALUE.'" dari daftar.');
         }
     }
 
@@ -553,6 +601,10 @@ class StoreSurveyRequest extends FormRequest
             'width' => $question['width'] ?? 'full',
             'help_position' => $question['help_position'] ?? 'below',
             'max_length' => in_array($type, ['short', 'long'], true) && ($question['max_length'] ?? null) ? (int) $question['max_length'] : null,
+            'options_from' => in_array($type, Survey::CHOICE_TYPES, true) ? trim((string) ($question['options_from'] ?? '')) : '',
+            'other_option' => in_array($type, Survey::CHOICE_TYPES, true) && ($question['options_from'] ?? '') === '' && (bool) ($question['other_option'] ?? false),
+            'other_label' => trim((string) ($question['other_label'] ?? '')),
+            'mask' => $type === 'short' ? trim((string) ($question['mask'] ?? '')) : '',
             'logic' => $this->normalizeLogic($question['logic'] ?? null),
             'validation' => [
                 'rules' => collect($question['validation']['rules'] ?? [])
@@ -585,6 +637,23 @@ class StoreSurveyRequest extends FormRequest
 
         if (in_array($type, Survey::RANGE_TYPES, true)) {
             $normalized['range'] = $this->normalizeRange($question);
+        }
+
+        if ($type === 'calc') {
+            $normalized['formula'] = trim((string) ($question['formula'] ?? ''));
+            $normalized['format'] = $question['format'] ?? 'number';
+            $normalized['decimals'] = (int) ($question['decimals'] ?? 0);
+        }
+
+        if ($type === 'file') {
+            $normalized['file'] = [
+                'accept' => $question['file']['accept'] ?? 'image',
+                'max_mb' => (int) ($question['file']['max_mb'] ?? 5),
+            ];
+        }
+
+        if ($normalized['options_from'] !== '') {
+            $normalized['options'] = [];
         }
 
         if ($type === 'matrix') {

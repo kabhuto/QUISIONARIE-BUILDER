@@ -121,7 +121,7 @@
                     <div class="fill-alert" role="alert">Ada {{ $errors->count() }} isian yang perlu diperbaiki. Periksa kolom yang ditandai merah.</div>
                 @endif
 
-                <form class="fill-form" id="fill-form" method="POST" action="{{ $canSubmit ? route('form.store', $survey) : '#' }}" novalidate @if ($isPreview) data-preview @endif>
+                <form class="fill-form" id="fill-form" method="POST" action="{{ $canSubmit ? route('form.store', $survey) : '#' }}" enctype="multipart/form-data" novalidate @if ($isPreview) data-preview @endif>
                     @csrf
                     @foreach ($survey->blocks as $blockIndex => $block)
                         <section class="cawi-card fill-block" id="blok-{{ $block['id'] }}" data-block-id="{{ $block['id'] }}" @if (! empty($block['condition'])) data-condition="{{ json_encode($block['condition']) }}" @endif>

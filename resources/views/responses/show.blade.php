@@ -27,6 +27,10 @@
         </div>
     @endif
 
+    @php
+        $questionIndex = collect($survey->questions())->keyBy('id')->all();
+    @endphp
+
     <div class="detail-sheet">
         @foreach ($survey->blocks as $blockIndex => $block)
             <section class="detail-block">
@@ -38,7 +42,7 @@
                             $answer = $response->answerTo($question['id']);
                         @endphp
                         <div @class(['detail-row', 'is-wide' => $question['type'] === 'table'])>
-                            <dt><span class="mono">{{ $numbers[$question['id']] ?? '' }}</span> {{ $question['label'] }}</dt>
+                            <dt><span class="mono">{{ $numbers[$question['id']] ?? '' }}</span> {{ \App\Support\Piping::resolved($question['label'], fn (string $id): string => isset($questionIndex[$id]) ? $response->displayAnswer($questionIndex[$id]) : '') }}</dt>
                             @if ($answer === null)
                                 <dd class="is-empty">Tidak diisi / tidak tampil</dd>
                             @elseif ($question['type'] === 'table')
@@ -84,6 +88,16 @@
                                         <div><small class="muted">{{ $field['label'] }}:</small> {{ $answer[$field['key']] ?? '—' }}</div>
                                     @endforeach
                                 </dd>
+                            @elseif ($question['type'] === 'file' && \App\Models\Survey::isUploadPath($answer))
+                                <dd>
+                                    @if (in_array(strtolower(pathinfo($answer, PATHINFO_EXTENSION)), ['jpg', 'jpeg', 'png', 'webp'], true))
+                                        <a href="{{ asset('storage/'.$answer) }}" target="_blank" rel="noopener"><img class="detail-photo" src="{{ asset('storage/'.$answer) }}" alt="{{ $question['text'] ?? $question['label'] }}"></a>
+                                    @else
+                                        <a href="{{ asset('storage/'.$answer) }}" target="_blank" rel="noopener">Buka berkas ({{ strtoupper(pathinfo($answer, PATHINFO_EXTENSION)) }})</a>
+                                    @endif
+                                </dd>
+                            @elseif ($question['type'] === 'location')
+                                <dd>{{ $answer }} · <a href="https://www.openstreetmap.org/?mlat={{ urlencode(trim(explode(',', $answer)[0])) }}&mlon={{ urlencode(trim(explode(',', $answer)[1] ?? '')) }}#map=17/{{ urlencode(trim(explode(',', $answer)[0])) }}/{{ urlencode(trim(explode(',', $answer)[1] ?? '')) }}" target="_blank" rel="noopener">Lihat di peta</a></dd>
                             @else
                                 <dd>{{ $response->displayAnswer($question) }}</dd>
                             @endif

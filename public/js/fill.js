@@ -10,6 +10,9 @@
     const progressBar = document.querySelector('[data-progress-bar]');
     const progressText = document.querySelector('[data-progress-text]');
 
+    const OTHER_VALUE = 'Lainnya';
+    const OTHER_SUFFIX = '__lainnya';
+
     function parseJson(value) {
         try {
             return JSON.parse(value || 'null');
@@ -36,7 +39,12 @@
             const filled = [...question.querySelectorAll('input:not([type="radio"]):not([type="hidden"]), select, input[type="radio"]:checked')].some(field => fieldValue(field) !== '');
             return filled ? ['filled'] : [];
         }
-        const value = fieldValue(question.querySelector('[name^="answers["]'));
+        if (type === 'calc') return question.dataset.value ?? '';
+        if (type === 'file') {
+            const input = question.querySelector('input[type="file"]');
+            return input?.files?.length ? input.files[0].name : '';
+        }
+        const value = fieldValue(question.querySelector('[name^="answers["]:not([data-other-text])'));
         return type === 'currency' ? value.replace(/\D/g, '') : value;
     }
 
@@ -97,6 +105,247 @@
         }
     }
 
+
+    // ── Formulas, mirroring App\Support\Formula ────────────────────────────
+
+    const FUNCTIONS = { sum: [1, Infinity], avg: [1, Infinity], min: [1, Infinity], max: [1, Infinity], round: [1, 2], floor: [1, 1], ceil: [1, 1], abs: [1, 1], count: [1, 1], len: [1, 1], years: [1, 2], days: [2, 2], if: [3, 3] };
+    const formulaCache = new Map();
+
+    function parseFormula(formula) {
+        if (formulaCache.has(formula)) return formulaCache.get(formula);
+        const pattern = /\s*(?:\{\{([A-Za-z0-9_-]+)\}\}|(\d+(?:\.\d+)?)|([A-Za-z_]+)|(>=|<=|==|!=|<>|[-+*/%(),<>=])|"([^"]*)"|'([^']*)')/y;
+        const tokens = [];
+        let offset = 0;
+        while (offset < formula.length && formula.slice(offset).trim() !== '') {
+            pattern.lastIndex = offset;
+            const match = pattern.exec(formula);
+            if (!match) return formulaCache.set(formula, null).get(formula);
+            offset = pattern.lastIndex;
+            if (match[1] !== undefined) tokens.push(['tag', match[1]]);
+            else if (match[2] !== undefined) tokens.push(['num', match[2]]);
+            else if (match[3] !== undefined) tokens.push(['name', match[3].toLowerCase()]);
+            else if (match[4] !== undefined) tokens.push(['op', match[4] === '<>' ? '!=' : (match[4] === '=' ? '==' : match[4])]);
+            else tokens.push(['str', (match[5] ?? '') + (match[6] ?? '')]);
+        }
+        let position = 0;
+        const peek = () => tokens[position] ?? ['end', ''];
+        const expect = symbol => {
+            if (peek()[1] !== symbol) throw new Error(symbol);
+            position++;
+        };
+        const factor = () => {
+            const [kind, value] = tokens[position++] ?? ['end', ''];
+            if (kind === 'op' && (value === '-' || value === '+')) {
+                const operand = factor();
+                return value === '-' ? ['neg', operand] : operand;
+            }
+            if (kind === 'num') return ['num', Number(value)];
+            if (kind === 'tag' || kind === 'str') return [kind, value];
+            if (kind === 'op' && value === '(') {
+                const inner = comparison();
+                expect(')');
+                return inner;
+            }
+            if (kind === 'name' && FUNCTIONS[value]) {
+                expect('(');
+                const args = [];
+                if (peek()[1] !== ')') {
+                    do {
+                        args.push(comparison());
+                    } while (peek()[1] === ',' && ++position);
+                }
+                expect(')');
+                if (args.length < FUNCTIONS[value][0] || args.length > FUNCTIONS[value][1]) throw new Error(value);
+                return ['call', value, args];
+            }
+            throw new Error(value);
+        };
+        const loop = (next, operators) => () => {
+            let left = next();
+            while (peek()[0] === 'op' && operators.includes(peek()[1])) {
+                const operator = tokens[position++][1];
+                left = ['bin', operator, left, next()];
+            }
+            return left;
+        };
+        const term = loop(factor, ['*', '/', '%']);
+        const additive = loop(term, ['+', '-']);
+        const comparison = loop(additive, ['>', '<', '>=', '<=', '==', '!=']);
+        let tree = null;
+        try {
+            tree = tokens.length ? comparison() : null;
+            if (position < tokens.length) tree = null;
+        } catch {
+            tree = null;
+        }
+        formulaCache.set(formula, tree);
+        return tree;
+    }
+
+    function formulaNumber(value) {
+        if (typeof value === 'number') return value;
+        if (Array.isArray(value) || value === null || value === undefined) return 0;
+        const text = String(value).trim().replace(',', '.');
+        return text !== '' && !Number.isNaN(Number(text)) ? Number(text) : 0;
+    }
+
+    function formulaDate(value) {
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('date');
+        return value;
+    }
+
+    function today() {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
+
+    function runFormula(node, answers) {
+        switch (node[0]) {
+            case 'num':
+            case 'str': return node[1];
+            case 'tag': return answers[node[1]] ?? null;
+            case 'neg': return -formulaNumber(runFormula(node[1], answers));
+            case 'bin': {
+                const left = formulaNumber(runFormula(node[2], answers));
+                const right = formulaNumber(runFormula(node[3], answers));
+                if ((node[1] === '/' || node[1] === '%') && right === 0) throw new Error('zero');
+                switch (node[1]) {
+                    case '+': return left + right;
+                    case '-': return left - right;
+                    case '*': return left * right;
+                    case '/': return left / right;
+                    case '%': return left % right;
+                    case '>': return Number(left > right);
+                    case '<': return Number(left < right);
+                    case '>=': return Number(left >= right);
+                    case '<=': return Number(left <= right);
+                    case '==': return Number(Math.abs(left - right) < 1e-9);
+                    default: return Number(Math.abs(left - right) >= 1e-9);
+                }
+            }
+            default: {
+                const [, name, args] = node;
+                if (name === 'if') return formulaNumber(runFormula(args[formulaNumber(runFormula(args[0], answers)) !== 0 ? 1 : 2], answers));
+                const values = args.map(argument => runFormula(argument, answers));
+                const numbers = () => values.map(formulaNumber);
+                switch (name) {
+                    case 'sum': return numbers().reduce((total, value) => total + value, 0);
+                    case 'avg': return numbers().reduce((total, value) => total + value, 0) / values.length;
+                    case 'min': return Math.min(...numbers());
+                    case 'max': return Math.max(...numbers());
+                    case 'round': {
+                        const factor = 10 ** formulaNumber(values[1] ?? 0);
+                        return Math.round(formulaNumber(values[0]) * factor) / factor;
+                    }
+                    case 'floor': return Math.floor(formulaNumber(values[0]));
+                    case 'ceil': return Math.ceil(formulaNumber(values[0]));
+                    case 'abs': return Math.abs(formulaNumber(values[0]));
+                    case 'count': return Array.isArray(values[0]) ? values[0].filter(isAnswered).length : Number(isAnswered(values[0] ?? ''));
+                    case 'len': return Array.isArray(values[0]) ? 0 : [...String(values[0] ?? '').trim()].length;
+                    case 'years': {
+                        const [from, to] = [formulaDate(values[0]), formulaDate(values[1] ?? today())];
+                        return Number(to.slice(0, 4)) - Number(from.slice(0, 4)) - (to.slice(5) < from.slice(5) ? 1 : 0);
+                    }
+                    default: return Math.round((Date.parse(`${formulaDate(values[1])}T00:00:00Z`) - Date.parse(`${formulaDate(values[0])}T00:00:00Z`)) / 86400000);
+                }
+            }
+        }
+    }
+
+    // Null when the formula's answers are all empty or it cannot be worked out.
+    function evaluateFormula(formula, answers) {
+        const tree = parseFormula(formula);
+        if (!tree) return null;
+        const references = [...formula.matchAll(/\{\{([A-Za-z0-9_-]+)\}\}/g)].map(match => match[1]);
+        if (references.length && !references.some(id => isAnswered(answers[id] ?? ''))) return null;
+        try {
+            const value = formulaNumber(runFormula(tree, answers));
+            return Number.isFinite(value) ? value : null;
+        } catch {
+            return null;
+        }
+    }
+
+    function plainNumber(value, decimals) {
+        const text = (Math.round(value * 10 ** decimals) / 10 ** decimals).toFixed(decimals);
+        return /^-0(\.0+)?$/.test(text) ? text.slice(1) : text;
+    }
+
+    function displayNumber(value, format, decimals) {
+        const number = Number(value).toLocaleString('id-ID', { minimumFractionDigits: format === 'currency' ? 0 : decimals, maximumFractionDigits: format === 'currency' ? 0 : decimals });
+        if (format === 'currency') return `Rp ${number}`;
+        return format === 'percent' ? `${number}%` : number;
+    }
+
+    // ── Answers quoted in question texts, options taken from other answers ─
+
+    function answerText(question, answer, known) {
+        if (!isAnswered(answer ?? '')) return '';
+        const id = question?.dataset.questionId;
+        const other = id ? String(known[`${id}${OTHER_SUFFIX}`] ?? '').trim() : '';
+        const values = [answer].flat().map(value => (value === OTHER_VALUE && other ? other : value));
+        if (question?.dataset.type === 'calc') return displayNumber(answer, question.dataset.format, Number(question.dataset.decimals || 0));
+        if (question?.dataset.type === 'currency') return displayNumber(answer, 'currency', 0);
+        if (question?.dataset.type === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(answer)) return formatDate(answer);
+        return values.join(', ');
+    }
+
+    function updatePipes(known) {
+        form.closest('body').querySelectorAll('[data-pipe]').forEach(pipe => {
+            const source = form.querySelector(`.fill-question[data-question-id="${CSS.escape(pipe.dataset.pipe)}"]`);
+            const text = answerText(source, known[pipe.dataset.pipe], known);
+            pipe.textContent = text || pipe.dataset.fallback || '…';
+            pipe.classList.toggle('is-empty', !text);
+        });
+    }
+
+    function sourceOptions(sourceId, known) {
+        const other = String(known[`${sourceId}${OTHER_SUFFIX}`] ?? '').trim();
+        const chosen = [known[sourceId] ?? []].flat().filter(value => typeof value === 'string' && value.trim() !== '');
+        return [...new Set(chosen.map(value => (value === OTHER_VALUE && other ? other : value)))];
+    }
+
+    // Rebuilds a choice question's options from the answers chosen on its source question, keeping what still applies.
+    function syncDynamicOptions(question, known) {
+        const options = sourceOptions(question.dataset.optionsFrom, known);
+        const key = JSON.stringify(options);
+        if (question.dataset.optionsKey === key) return;
+        question.dataset.optionsKey = key;
+        const type = question.dataset.type;
+        const container = question.querySelector('[data-options]');
+        const name = `answers[${question.dataset.questionId}]`;
+        const selected = [answerOf(question)].flat();
+        if (type === 'dropdown') {
+            const placeholder = container.querySelector('option[value=""]');
+            container.replaceChildren(placeholder, ...options.map(option => new Option(option, option, false, selected.includes(option))));
+        } else {
+            container.replaceChildren(...options.map(option => {
+                const label = document.createElement('label');
+                label.className = `cawi-option${type === 'multiple' ? ' is-multiple' : ''}`;
+                const input = document.createElement('input');
+                input.type = type === 'single' ? 'radio' : 'checkbox';
+                input.name = type === 'single' ? name : `${name}[]`;
+                input.value = option;
+                input.checked = selected.includes(option);
+                const text = document.createElement('span');
+                text.textContent = option;
+                label.append(input, text);
+                return label;
+            }));
+            container.classList.toggle('is-columns', options.length > 4 && question.classList.contains('w-full'));
+        }
+        const empty = question.querySelector('[data-options-empty]');
+        if (empty) empty.hidden = options.length > 0;
+    }
+
+    function syncOtherText(question) {
+        const text = question.querySelector('[data-other-text]');
+        if (!text) return;
+        const chosen = [answerOf(question)].flat().includes(OTHER_VALUE);
+        text.hidden = !chosen;
+        if (!chosen) text.value = '';
+    }
+
     // A group is {operator: "and" | "or", rules: [...]} where each rule is a condition or a nested group.
     function evaluate(group, known) {
         const rules = group?.rules ?? [];
@@ -125,13 +374,13 @@
                 if (key) state[key] = value;
             });
         }
-        if (question.dataset.type === 'info' || state.hidden || state.disabled) state.required = false;
+        if (question.dataset.type === 'info' || question.dataset.type === 'calc' || state.hidden || state.disabled) state.required = false;
         return state;
     }
 
     // Questions the respondent can see and change.
     function editableQuestions() {
-        return [...form.querySelectorAll('.fill-question:not([data-type="info"])')]
+        return [...form.querySelectorAll('.fill-question:not([data-type="info"]):not([data-type="calc"])')]
             .filter(question => !question.hidden && !question.closest('.fill-block').hidden && !question.classList.contains('is-disabled'));
     }
 
@@ -147,9 +396,22 @@
                 question.classList.toggle('is-disabled', state.disabled);
                 question.toggleAttribute('data-required', state.required);
                 question.querySelectorAll('input, select, textarea, button').forEach(field => (field.disabled = state.hidden || state.disabled));
-                if (!state.hidden && question.dataset.type !== 'info') known[question.dataset.questionId] = answerOf(question);
+                if (state.hidden || question.dataset.type === 'info') return;
+                const id = question.dataset.questionId;
+                if (question.dataset.optionsFrom) syncDynamicOptions(question, known);
+                if (question.dataset.type === 'calc') {
+                    const value = evaluateFormula(question.dataset.formula ?? '', known);
+                    const decimals = Number(question.dataset.decimals || 0);
+                    question.dataset.value = value === null ? '' : plainNumber(value, decimals);
+                    question.querySelector('[data-calc-output]').textContent = value === null ? '—' : displayNumber(question.dataset.value, question.dataset.format, decimals);
+                }
+                syncOtherText(question);
+                known[id] = answerOf(question);
+                const other = question.querySelector('[data-other-text]');
+                if (other) known[`${id}${OTHER_SUFFIX}`] = fieldValue(other);
             });
         });
+        updatePipes(known);
         form.querySelectorAll('.cawi-table[data-mode="dynamic"]').forEach(table => {
             const question = table.closest('.fill-question');
             if (!question.hidden && !question.classList.contains('is-disabled')) updateAddButton(table);
@@ -480,6 +742,15 @@
 
         const answer = answerOf(question);
         if (!isAnswered(answer)) return required ? 'Pertanyaan ini wajib diisi.' : consistencyProblem(question);
+        if ([answer].flat().includes(OTHER_VALUE) && question.querySelector('[data-other-text]') && !fieldValue(question.querySelector('[data-other-text]'))) return 'Sebutkan jawaban lainnya.';
+        if (question.dataset.mask && !maskPattern(question.dataset.mask).test(answer)) return `Isi sesuai format ${question.dataset.mask}.`;
+        if (type === 'time' && !/^\d{2}:\d{2}$/.test(answer)) return 'Isi jam dengan format JJ:MM.';
+        if (type === 'location' && !locationPattern.test(answer)) return 'Isi koordinat "lintang, bujur", mis. -7.0321, 112.7464.';
+        if (type === 'file') {
+            const file = question.querySelector('input[type="file"]').files[0];
+            const maxMb = Number(question.querySelector('input[type="file"]').dataset.maxMb || 5);
+            if (file && file.size > maxMb * 1024 * 1024) return `Ukuran berkas maksimal ${maxMb} MB.`;
+        }
         if (type === 'number' && Number.isNaN(Number(answer))) return 'Isi dengan angka.';
         if (type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answer)) return 'Isi dengan alamat email yang valid.';
         if (type === 'phone' && !/^[0-9+\-\s().]{6,20}$/.test(answer)) return 'Isi dengan nomor telepon yang valid.';
@@ -506,7 +777,8 @@
     function saveDraft() {
         const store = storage();
         if (!store) return;
-        const entries = [...new FormData(form).entries()].filter(([name]) => name.startsWith('answers['));
+        // Chosen files cannot be kept in a draft; everything else can.
+        const entries = [...new FormData(form).entries()].filter(([name, value]) => name.startsWith('answers[') && typeof value === 'string');
         try {
             store.setItem(config.draftKey, JSON.stringify({ savedAt: Date.now(), entries }));
             const time = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -577,8 +849,69 @@
 
     // ── Events ─────────────────────────────────────────────────────────────
 
+    // ── Input masks, locations, uploads ────────────────────────────────────
+
+    const locationPattern = /^(-?\d{1,2}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/;
+
+    function maskPattern(mask) {
+        const pattern = [...mask].map(character => ({ 9: '[0-9]', a: '[A-Za-z]', '*': '[A-Za-z0-9]' })[character] ?? character.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&')).join('');
+        return new RegExp(`^${pattern}$`);
+    }
+
+    // Types the mask's fixed characters (dots, dashes) automatically and drops what does not fit.
+    function applyMask(field, mask) {
+        const raw = field.value.replace(/[^A-Za-z0-9]/g, '');
+        let result = '';
+        let index = 0;
+        for (const character of mask) {
+            if (index >= raw.length) break;
+            if (character === '9' || character === 'a' || character === '*') {
+                const next = raw[index];
+                const fits = character === '9' ? /\d/.test(next) : (character === 'a' ? /[A-Za-z]/.test(next) : true);
+                if (!fits) break;
+                result += character === 'a' ? next.toUpperCase() : next;
+                index++;
+            } else {
+                result += character;
+            }
+        }
+        field.value = result;
+    }
+
+    form.querySelectorAll('.fill-question[data-mask] input.fill-input').forEach(field => applyMask(field, field.closest('[data-mask]').dataset.mask));
+
+    form.addEventListener('click', event => {
+        const button = event.target.closest('[data-locate]');
+        if (!button) return;
+        const container = button.closest('[data-location]');
+        const status = container.querySelector('[data-location-status]');
+        if (!navigator.geolocation) {
+            status.textContent = 'Perangkat ini tidak mendukung pengambilan lokasi. Isi koordinat secara manual.';
+            return;
+        }
+        status.textContent = 'Mengambil lokasi…';
+        navigator.geolocation.getCurrentPosition(position => {
+            const field = container.querySelector('input');
+            field.value = `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`;
+            status.textContent = `Akurasi sekitar ${Math.round(position.coords.accuracy)} m.`;
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+        }, error => {
+            status.textContent = error.code === 1 ? 'Izin lokasi ditolak. Izinkan akses lokasi atau isi koordinat secara manual.' : 'Lokasi tidak dapat diambil. Coba lagi atau isi secara manual.';
+        }, { enableHighAccuracy: true, timeout: 15000 });
+    });
+
+    form.addEventListener('change', event => {
+        if (!event.target.matches('[data-file] input[type="file"]')) return;
+        const preview = event.target.closest('[data-file]').querySelector('[data-file-preview]');
+        const file = event.target.files[0];
+        if (preview.src) URL.revokeObjectURL(preview.src);
+        preview.hidden = !file || !file.type.startsWith('image/');
+        if (!preview.hidden) preview.src = URL.createObjectURL(file);
+    });
+
     form.addEventListener('input', event => {
         if (event.target.matches('[data-currency]')) formatRupiah(event.target);
+        if (event.target.closest('.fill-question[data-mask]') && event.target.matches('input.fill-input')) applyMask(event.target, event.target.closest('[data-mask]').dataset.mask);
         if (event.target.matches('[data-slider-range]')) setSlider(event.target.closest('[data-slider]'), event.target.value);
         const question = event.target.closest('.fill-question');
         if (question?.classList.contains('has-error')) setError(question, '');

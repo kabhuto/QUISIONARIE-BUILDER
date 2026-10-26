@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Formula;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -51,8 +52,16 @@ class SurveyResponse extends Model
             return '';
         }
 
+        $other = trim((string) ($this->answers[$question['id'].Survey::OTHER_SUFFIX] ?? ''));
+        if ($other !== '' && in_array(Survey::OTHER_VALUE, (array) $answer, true)) {
+            $answer = array_map(fn ($value) => $value === Survey::OTHER_VALUE ? Survey::OTHER_VALUE.': '.$other : $value, (array) $answer);
+            $answer = $question['type'] === 'multiple' ? $answer : $answer[0];
+        }
+
         return match ($question['type']) {
             'currency' => self::formatRupiah($answer),
+            'calc' => Formula::display((string) $answer, $question['format'] ?? 'number', (int) ($question['decimals'] ?? 0)),
+            'file' => Survey::isUploadPath($answer) ? asset('storage/'.$answer) : (string) $answer,
             'signature' => '[tanda tangan]',
             'matrix' => collect($question['matrix']['rows'])
                 ->filter(fn (string $row, int $index): bool => ($answer[$index] ?? '') !== '')

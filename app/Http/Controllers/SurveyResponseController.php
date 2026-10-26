@@ -45,7 +45,7 @@ class SurveyResponseController extends Controller
             fputcsv($output, [
                 'No',
                 'Waktu kirim',
-                ...array_map(fn (array $question): string => $question['number'].' '.$question['label'], $questions),
+                ...array_map(fn (array $question): string => $question['number'].' '.$question['text'], $questions),
             ]);
 
             $position = 0;

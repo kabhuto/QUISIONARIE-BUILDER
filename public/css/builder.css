@@ -380,3 +380,9 @@ body{background:#fff}.topbar,.page-intro,.toolbox,.settings-panel,.editor-toolba
 .orientation-chip{flex:none;padding:2px 7px;border-radius:10px;background:#e8eefb;color:#2c4f93;font-family:var(--mono);font-size:8px;letter-spacing:.3px;white-space:nowrap}
 .range-wrap{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:3px;color:#8a9b97;font-size:10px}
 .range-wrap>.setting-select{flex:1;min-width:0;padding:0 4px}
+.dynamic-preview{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:5px 9px;border:1px dashed #b9cfc9;border-radius:3px;background:#f6faf8;color:#4d6d67;font-size:9px;overflow-wrap:anywhere}
+.dynamic-preview.is-calc{font-family:var(--mono)}
+.dynamic-preview b{color:#2b7a6f}
+.setting-pair{display:grid;grid-template-columns:1fr 90px;gap:6px}
+.mono-input{font-family:var(--mono)}
+.tag-picker{margin-top:6px;color:#2456a6}
