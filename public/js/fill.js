@@ -1115,6 +1115,11 @@
             status.textContent = 'Perangkat ini tidak mendukung pengambilan lokasi. Coba dengan HP atau browser lain.';
             return;
         }
+        // Browsers only hand out the location on https (or on this computer itself).
+        if (!window.isSecureContext) {
+            status.textContent = 'Lokasi tidak dapat diambil karena formulir dibuka lewat alamat http. Buka formulir lewat alamat https, atau minta admin mengaktifkannya.';
+            return;
+        }
         // Keep listening to the GPS, since a phone's first fixes are often coarse and sharpen within
         // seconds: a fix of 10 m or better is taken at once; after 10 s the best fix within the
         // question's limit is taken; without a limit the first fix is.
