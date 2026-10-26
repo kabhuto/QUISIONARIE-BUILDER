@@ -4,7 +4,7 @@ Aplikasi pembuat kuesioner untuk kegiatan BPS, berbasis Laravel. Kuesioner disus
 
 ## Kebutuhan
 
-- PHP 8.3 atau lebih baru, dengan ekstensi `pdo_sqlite`, `sqlite3`, `fileinfo`, dan `gd`
+- PHP 8.4 atau lebih baru, dengan ekstensi `pdo_sqlite`, `sqlite3`, `fileinfo`, `gd`, dan `zip`
 - Composer 2
 - Git
 
@@ -48,7 +48,8 @@ php artisan test
 
 - File berikut **tidak** ada di repositori dan dibuat di masing-masing komputer: `.env`, `database/database.sqlite` (semua kuesioner dan respons), logo yang diunggah (`storage/app/public`), dan `vendor/`.
 - Untuk memindahkan kuesioner beserta responsnya antarkomputer, gunakan **Ekspor JSON** di dashboard, lalu **Impor JSON** di komputer tujuan.
-- Belum ada login admin. Jangan pasang di server publik sebelum fitur login ditambahkan.
+- Di komputer pengembangan, `ADMIN_OPEN_ON_LAN=true` di `.env` membuka halaman admin tanpa login dari komputer itu dan jaringan lokal. Di server publik nilainya `false`, sehingga admin wajib masuk lewat `/masuk`. Akun admin dibuat dengan `php artisan admin:buat email@anda.com`.
+- Pemasangan di hosting (Hostinger): lihat [DEPLOY-HOSTINGER.md](DEPLOY-HOSTINGER.md).
 
 ## Fitur utama
 

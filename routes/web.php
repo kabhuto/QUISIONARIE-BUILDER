@@ -5,6 +5,7 @@ use App\Http\Controllers\AssignmentController;
 use App\Http\Controllers\DataValidationController;
 use App\Http\Controllers\FormSubmissionController;
 use App\Http\Controllers\GoogleDriveController;
+use App\Http\Controllers\LoginController;
 use App\Http\Controllers\LogoController;
 use App\Http\Controllers\PublishedSurveyController;
 use App\Http\Controllers\ReferenceListController;
@@ -14,8 +15,13 @@ use App\Http\Controllers\SurveyPrintController;
 use App\Http\Controllers\SurveyResponseController;
 use Illuminate\Support\Facades\Route;
 
-// Admin: build, preview, publish and review surveys (no login yet, so local network only).
-Route::middleware('admin.local')->group(function (): void {
+// Admin sign-in.
+Route::get('/masuk', [LoginController::class, 'create'])->name('login');
+Route::post('/masuk', [LoginController::class, 'store'])->middleware('throttle:10,1')->name('login.store');
+Route::post('/keluar', [LoginController::class, 'destroy'])->name('logout');
+
+// Admin: build, preview, publish and review surveys (signed in, or from the LAN when allowed).
+Route::middleware('admin')->group(function (): void {
     Route::redirect('/', '/surveys');
 
     Route::post('/surveys/import', [SurveyJsonController::class, 'import'])->name('surveys.import');

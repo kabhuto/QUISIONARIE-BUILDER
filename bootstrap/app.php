@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Middleware\AdminFromLocalNetwork;
+use App\Http\Middleware\AdminAccess;
 use App\Http\Middleware\AuthenticateApiToken;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -15,7 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->alias(['api.token' => AuthenticateApiToken::class, 'admin.local' => AdminFromLocalNetwork::class]);
+        $middleware->alias(['api.token' => AuthenticateApiToken::class, 'admin' => AdminAccess::class]);
         // A tunnel (e.g. cloudflared) on this computer forwards https visitors; trust its headers only.
         $middleware->trustProxies(at: ['127.0.0.1', '::1']);
     })

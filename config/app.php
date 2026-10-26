@@ -65,7 +65,7 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------
@@ -79,6 +79,19 @@ return [
     */
 
     'locale' => env('APP_LOCALE', 'en'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Admin pages without login on the local network
+    |--------------------------------------------------------------------------
+    |
+    | Handy on a development PC: the builder and responses open without signing
+    | in for requests from this computer or the LAN. Keep it false on a public
+    | server (hosting), where every admin page then requires a login.
+    |
+    */
+
+    'admin_open_on_lan' => (bool) env('ADMIN_OPEN_ON_LAN', false),
 
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 

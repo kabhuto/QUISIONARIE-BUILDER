@@ -1,0 +1,11 @@
+# Hostinger / shared hosting: the repository is cloned into public_html, but only the public/
+# folder may be served. Every request goes there; .env, storage, vendor and the code stay hidden.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+<FilesMatch "^\.(env|git)">
+    Require all denied
+</FilesMatch>

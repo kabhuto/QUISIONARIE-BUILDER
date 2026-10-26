@@ -18,6 +18,12 @@
             <a href="{{ route('surveys.index') }}" @class(['nav-link', 'is-active' => request()->routeIs('surveys.index')])>DASHBOARD</a>
             <a href="{{ route('references.index') }}" @class(['nav-link', 'is-active' => request()->routeIs('references.*')])>DATA REFERENSI</a>
             <a href="{{ route('api-access.index') }}" @class(['nav-link', 'is-active' => request()->routeIs('api-access.*')])>AKSES API</a>
+            @auth
+                <form class="nav-logout" method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button class="nav-link" type="submit" title="{{ auth()->user()->email }}">KELUAR</button>
+                </form>
+            @endauth
         </nav>
         <div class="topbar-actions">
             @yield('actions')
