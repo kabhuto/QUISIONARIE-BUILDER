@@ -109,7 +109,7 @@ class SurveyJson
                 'matrix' => 'per baris ('.implode(' | ', $question['matrix']['rows']).') salah satu dari: '.implode(' | ', $question['matrix']['columns']),
                 'signature' => 'gambar tanda tangan PNG (data URL)',
                 'time' => 'jam (JJ:MM)',
-                'location' => 'koordinat "lintang, bujur" dalam derajat desimal',
+                'location' => 'koordinat "lintang, bujur" dalam derajat desimal'.(($question['location']['max_accuracy'] ?? null) ? ", akurasi GPS paling banyak {$question['location']['max_accuracy']} m (dikirim sebagai {$question['id']}".Survey::ACCURACY_SUFFIX.')' : ''),
                 'file' => 'berkas '.implode('/', Survey::fileExtensions($question)).' maksimal '.($question['file']['max_mb'] ?? 5).' MB',
                 'list' => 'daftar nama/isian, maksimal '.($question['list']['max'] ?? 10),
                 'calc' => 'dihitung otomatis: '.Piping::text((string) ($question['formula'] ?? ''), $numbers),

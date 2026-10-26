@@ -117,6 +117,7 @@ class SurveyController extends Controller
                 'maxChecks' => FieldValidation::MAX_CHECKS,
                 'fileKinds' => Survey::FILE_KINDS,
                 'maxFileMb' => Survey::MAX_FILE_MB,
+                'maxLocationAccuracy' => Survey::MAX_LOCATION_ACCURACY,
                 'formulaFormats' => Formula::FORMATS,
                 'maxMaskLength' => Survey::MAX_MASK_LENGTH,
                 'rosterSourceTypes' => Survey::ROSTER_SOURCE_TYPES,

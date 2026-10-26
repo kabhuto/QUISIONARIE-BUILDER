@@ -142,6 +142,8 @@ class StoreSurveyRequest extends FormRequest
             "{$question}.file" => ['nullable', 'array'],
             "{$question}.file.accept" => ['sometimes', Rule::in(array_keys(Survey::FILE_KINDS))],
             "{$question}.file.max_mb" => ['sometimes', 'integer', 'between:1,'.Survey::MAX_FILE_MB],
+            "{$question}.location" => ['nullable', 'array'],
+            "{$question}.location.max_accuracy" => ['nullable', 'integer', 'between:1,'.Survey::MAX_LOCATION_ACCURACY],
             "{$question}.lookup" => ['nullable', 'array'],
             "{$question}.lookup.source" => ['sometimes', Rule::in(array_keys(Lookup::SOURCES))],
             "{$question}.lookup.reference" => ['nullable', 'string', 'max:120'],
@@ -753,6 +755,11 @@ class StoreSurveyRequest extends FormRequest
 
         if ($type === 'list') {
             $normalized['list'] = ['max' => (int) ($question['list']['max'] ?? 10)];
+        }
+
+        if ($type === 'location') {
+            $maxAccuracy = $question['location']['max_accuracy'] ?? null;
+            $normalized['location'] = ['max_accuracy' => $maxAccuracy === null || $maxAccuracy === '' ? null : (int) $maxAccuracy];
         }
 
         if ($type === 'file') {

@@ -83,6 +83,9 @@ class SurveyLogic
         if (($question['type'] ?? null) === 'list') {
             $question += ['list' => ['max' => 10]];
         }
+        if (($question['type'] ?? null) === 'location') {
+            $question += ['location' => ['max_accuracy' => null]];
+        }
         $question['validation'] = (is_array($question['validation']) ? $question['validation'] : []) + ['rules' => [], 'message' => '', 'checks' => []];
 
         if (is_array($legacy) && ($legacy['question_id'] ?? null) && ! $question['logic']) {

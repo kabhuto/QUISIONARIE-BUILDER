@@ -89,6 +89,7 @@
             lookup: null,
             ...(type === 'calc' ? { formula: '', format: 'number', decimals: 0 } : {}),
             ...(type === 'file' ? { file: { accept: 'image', max_mb: 5 } } : {}),
+            ...(type === 'location' ? { location: { max_accuracy: null } } : {}),
             ...(type === 'list' ? { list: { max: 10 } } : {}),
             ...(type === 'region' ? { region: defaultRegion(), label: 'Identitas wilayah' } : {}),
             ...(type === 'table' ? { table: defaultTable() } : {}),
@@ -255,6 +256,10 @@
             };
         }
         if (question.type === 'list') normalized.list = { max: clamp(question.list?.max, 1, config.maxListItems, 10) };
+        if (question.type === 'location') {
+            const maxAccuracy = question.location?.max_accuracy;
+            normalized.location = { max_accuracy: maxAccuracy ? clamp(maxAccuracy, 1, config.maxLocationAccuracy, null) : null };
+        }
         if (question.type === 'region') normalized.region = normalizeRegion(question.region);
         if (question.type === 'table') normalized.table = normalizeTable(question.table);
         if (rangeTypes.includes(question.type)) normalized.range = normalizeRange(question.type, question.range);
@@ -992,7 +997,7 @@
             case 'list': return '<div class="list-preview"><span>1. ____________</span><span>2. ____________</span><b>+ Tambah nama</b></div>';
             case 'time': return `<div class="answer-line">${escapeHtml(question.prefill || 'Jam __ : __')}</div>`;
             case 'calc': return `<div class="dynamic-preview is-calc"><b>ƒx</b> ${escapeHtml(tagsToNumbers(question.formula) || 'Tulis rumus di panel kanan, mis. {{101}} + {{102}}')}</div>`;
-            case 'location': return '<div class="answer-line">📍 lintang, bujur — tombol “Ambil lokasi saat ini”</div>';
+            case 'location': return `<div class="answer-line">📍 tombol “Ambil lokasi saat ini” + peta${question.location?.max_accuracy ? ` · akurasi ≤ ${question.location.max_accuracy} m` : ''}</div>`;
             case 'file': return `<div class="sign-preview">⇪ Unggah ${escapeHtml((config.fileKinds[question.file?.accept]?.label ?? 'berkas').toLowerCase())} · maks. ${question.file?.max_mb ?? 5} MB</div>`;
             default: return `<div class="answer-line">${escapeHtml(hint || 'Jawaban...')}</div>`;
         }
@@ -1181,6 +1186,9 @@
                     <label class="setting-field"><span>Tampilan</span><select class="setting-select" data-option="format">${Object.entries(config.formulaFormats).map(([value, label]) => `<option value="${value}" ${question.format === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></label>
                     <label class="setting-field"><span>Desimal</span><input class="setting-select" type="number" min="0" max="6" value="${question.decimals}" data-option="decimals"></label>
                 </div>` : '',
+            question.type === 'location' ? `
+                <label class="setting-field"><span>Akurasi GPS maks. (meter)</span><input class="setting-select" type="number" min="1" max="${config.maxLocationAccuracy}" placeholder="tanpa batas" value="${question.location?.max_accuracy ?? ''}" data-option="location_max_accuracy"></label>
+                <p class="setting-note">Lokasi baru diterima bila GPS seakurat ini atau lebih baik, mis. 10 m untuk absensi. Kosongkan bila tanpa batas.</p>` : '',
             question.type === 'file' ? `
                 <div class="setting-pair">
                     <label class="setting-field"><span>Jenis berkas</span><select class="setting-select" data-option="file_accept">${Object.entries(config.fileKinds).map(([value, kind]) => `<option value="${value}" ${question.file.accept === value ? 'selected' : ''}>${escapeHtml(kind.label)}</option>`).join('')}</select></label>
@@ -1480,6 +1488,7 @@
         }
         if (type === 'calc' && question.formula === undefined) Object.assign(question, { formula: '', format: 'number', decimals: 0 });
         if (type === 'file' && !question.file) question.file = { accept: 'image', max_mb: 5 };
+        if (type === 'location' && !question.location) question.location = { max_accuracy: null };
         if (!choiceTypes.includes(type)) Object.assign(question, { options_from: '', other_option: false });
         if (type !== 'dropdown') question.lookup = null;
         if (type !== 'short') question.mask = '';
@@ -1659,9 +1668,10 @@
             if (option === 'max_length') question.max_length = target.value ? clamp(target.value, 1, 5000, null) : null;
             else if (option === 'decimals') question.decimals = clamp(target.value, 0, 6, 0);
             else if (option === 'file_max_mb') question.file.max_mb = clamp(target.value, 1, config.maxFileMb, 5);
+            else if (option === 'location_max_accuracy') question.location = { max_accuracy: target.value ? clamp(target.value, 1, config.maxLocationAccuracy, null) : null };
             else if (['label', 'description', 'formula'].includes(option)) question[option] = tagsToIds(target.value);
             else question[option] = target.value;
-            if (['formula', 'mask', 'other_label', 'file_max_mb'].includes(option)) {
+            if (['formula', 'mask', 'other_label', 'file_max_mb', 'location_max_accuracy'].includes(option)) {
                 refreshPreview(question);
                 const note = selectionPanel.querySelector('[data-dynamic-problem]');
                 if (note) {

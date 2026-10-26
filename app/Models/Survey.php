@@ -70,6 +70,14 @@ class Survey extends Model
     public const MAX_FILE_MB = 10;
 
     /**
+     * A location question may demand a GPS fix at least this good (radius in metres); the
+     * reported accuracy is stored under the question id plus ACCURACY_SUFFIX.
+     */
+    public const MAX_LOCATION_ACCURACY = 1000;
+
+    public const ACCURACY_SUFFIX = '__akurasi';
+
+    /**
      * A block can repeat once per answer of an earlier question (FormGear's nested input / roster):
      * per number given, per option chosen, or per name in a list.
      */

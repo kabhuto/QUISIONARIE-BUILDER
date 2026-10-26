@@ -170,6 +170,16 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
+     * Where a location field's GPS accuracy (metres) is posted, next to the question like the "Lainnya" text.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    private function accuracyKey(array $field): string
+    {
+        return $field['question']['id'].Survey::ACCURACY_SUFFIX.($field['row'] === null ? '' : '.'.$field['row']);
+    }
+
+    /**
      * The options a field's choice question offers for the answers given so far.
      *
      * @param  array<string, mixed>  $field
@@ -267,6 +277,9 @@ class SubmitSurveyResponseRequest extends FormRequest
             if (Survey::hasOtherOption($question)) {
                 $rules['answers.'.$this->otherKey($field)] = ['nullable', 'string', 'max:255'];
             }
+            if ($question['type'] === 'location') {
+                $rules['answers.'.$this->accuracyKey($field)] = ['nullable', 'numeric', 'min:0'];
+            }
 
             $rules[$key] = match ($question['type']) {
                 'long' => [$presence, 'string', $maxLength(5000)],
@@ -277,7 +290,7 @@ class SubmitSurveyResponseRequest extends FormRequest
                 'currency' => [$presence, 'digits_between:1,18'],
                 'date' => [$presence, 'date'],
                 'time' => [$presence, 'date_format:H:i'],
-                'location' => [$presence, 'string', 'max:80', $this->locationRule($question)],
+                'location' => [$presence, 'string', 'max:80', $this->locationRule($field)],
                 'file' => [$presence, $this->fileRule($question)],
                 'email' => [$presence, 'email', 'max:160'],
                 'phone' => [$presence, 'regex:/^[0-9+\-\s().]{6,20}$/'],
@@ -332,16 +345,28 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
-     * A location is "latitude, longitude" in decimal degrees.
+     * A location is "latitude, longitude" in decimal degrees, taken with the GPS accuracy the question demands.
      *
-     * @param  array<string, mixed>  $question
+     * @param  array<string, mixed>  $field
      */
-    private function locationRule(array $question): Closure
+    private function locationRule(array $field): Closure
     {
-        return function (string $attribute, mixed $value, Closure $fail) use ($question): void {
+        $question = $field['question'];
+
+        return function (string $attribute, mixed $value, Closure $fail) use ($question, $field): void {
             if (! is_string($value) || ! preg_match('/^(-?\d{1,2}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/', trim($value), $match)
                 || abs((float) $match[1]) > 90 || abs((float) $match[2]) > 180) {
                 $fail("{$question['text']} harus berupa koordinat \"lintang, bujur\", mis. -7.0321, 112.7464.");
+
+                return;
+            }
+
+            $maxAccuracy = $question['location']['max_accuracy'] ?? null;
+            $accuracy = $this->input('answers.'.$this->accuracyKey($field));
+            if ($maxAccuracy !== null && (! is_numeric($accuracy) || (float) $accuracy > $maxAccuracy)) {
+                $fail(is_numeric($accuracy)
+                    ? "Akurasi {$question['text']} sekitar ".round((float) $accuracy)." m, harus paling banyak {$maxAccuracy} m. Perbarui lokasi di tempat terbuka."
+                    : "{$question['text']} harus direkam dengan GPS (akurasi paling banyak {$maxAccuracy} m).");
             }
         };
     }
@@ -616,8 +641,8 @@ class SubmitSurveyResponseRequest extends FormRequest
                     if ($value !== '' && $value !== [] && $value !== null) {
                         $answers[$question['id']] = $value;
                     }
-                    // Keep the "Lainnya" text and a looked-up label right after their answer.
-                    foreach ([Survey::LABEL_SUFFIX, Survey::OTHER_SUFFIX] as $suffix) {
+                    // Keep the "Lainnya" text, a looked-up label and a GPS accuracy right after their answer.
+                    foreach ([Survey::LABEL_SUFFIX, Survey::OTHER_SUFFIX, Survey::ACCURACY_SUFFIX] as $suffix) {
                         if (array_key_exists($question['id'].$suffix, $answers)) {
                             $extra = $answers[$question['id'].$suffix];
                             unset($answers[$question['id'].$suffix]);
@@ -683,6 +708,16 @@ class SubmitSurveyResponseRequest extends FormRequest
                 $answers[$id.Survey::LABEL_SUFFIX] = $label;
             } else {
                 $answers[$id.Survey::LABEL_SUFFIX][$row] = $label;
+            }
+        }
+
+        // The GPS accuracy of a location is kept next to it, rounded to whole metres.
+        $accuracy = $question['type'] === 'location' && $answer !== '' ? $this->input('answers.'.$this->accuracyKey($field)) : null;
+        if (is_numeric($accuracy)) {
+            if ($row === null) {
+                $answers[$id.Survey::ACCURACY_SUFFIX] = (int) round((float) $accuracy);
+            } else {
+                $answers[$id.Survey::ACCURACY_SUFFIX][$row] = (int) round((float) $accuracy);
             }
         }
 

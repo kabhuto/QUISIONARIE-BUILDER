@@ -213,11 +213,16 @@
                             <p class="fill-hint">Dihitung otomatis dari jawaban lain.</p>
                             @break
                         @case('location')
-                            <div class="cawi-location" data-location>
+                            @php
+                                $maxAccuracy = $question['location']['max_accuracy'] ?? null;
+                                $accuracyName = 'answers['.$question['id'].\App\Models\Survey::ACCURACY_SUFFIX.']'.$rowSuffix;
+                            @endphp
+                            <div class="cawi-location" data-location data-max-accuracy="{{ $maxAccuracy }}">
                                 {{-- Taken from the device's GPS only; the point is shown on a map. --}}
                                 <input id="{{ $inputId }}" name="{{ $name }}" type="hidden" value="{{ $old }}" data-location-value>
+                                <input name="{{ $accuracyName }}" type="hidden" value="{{ old('answers.'.$question['id'].\App\Models\Survey::ACCURACY_SUFFIX.$rowKey) }}" data-location-accuracy>
                                 <button class="cawi-button is-ghost" type="button" data-locate>📍 Ambil lokasi saat ini</button>
-                                <p class="fill-hint" data-location-status></p>
+                                <p class="fill-hint" data-location-status>@if ($maxAccuracy) Akurasi GPS harus {{ $maxAccuracy }} m atau lebih baik. @endif</p>
                                 <div class="cawi-location-map" data-location-map hidden>
                                     <div class="cawi-location-canvas" role="img" aria-label="Peta lokasi" data-location-canvas></div>
                                     <p class="fill-hint"><span data-location-coords></span> · <a href="#" target="_blank" rel="noopener" data-location-link>Buka di peta</a></p>

@@ -956,6 +956,11 @@
         if (question.dataset.mask && !maskPattern(question.dataset.mask).test(answer)) return `Isi sesuai format ${question.dataset.mask}.`;
         if (type === 'time' && !/^\d{2}:\d{2}$/.test(answer)) return 'Isi jam dengan format JJ:MM.';
         if (type === 'location' && !locationPattern.test(answer)) return 'Tekan "Ambil lokasi saat ini" untuk merekam lokasi.';
+        if (type === 'location') {
+            const maxAccuracy = Number(question.querySelector('[data-location]').dataset.maxAccuracy || 0);
+            const accuracy = question.querySelector('[data-location-accuracy]').value;
+            if (maxAccuracy && (accuracy === '' || Number(accuracy) > maxAccuracy)) return `Akurasi lokasi harus ${maxAccuracy} m atau lebih baik. Tekan "Perbarui lokasi".`;
+        }
         if (type === 'file') {
             const file = question.querySelector('input[type="file"]').files[0];
             const maxMb = Number(question.querySelector('input[type="file"]').dataset.maxMb || 5);
@@ -1108,22 +1113,37 @@
             status.textContent = 'Perangkat ini tidak mendukung pengambilan lokasi. Coba dengan HP atau browser lain.';
             return;
         }
-        status.textContent = 'Mengambil lokasi…';
-        button.disabled = true;
-        navigator.geolocation.getCurrentPosition(position => {
+        // Keep listening to the GPS until a fix is as accurate as the question demands (or the first
+        // fix when it sets no limit); a phone's first fixes are often coarse and sharpen within seconds.
+        const maxAccuracy = Number(container.dataset.maxAccuracy || 0);
+        let best = null;
+        let watch = null;
+        const finish = message => {
+            navigator.geolocation.clearWatch(watch);
+            clearTimeout(timer);
+            button.disabled = false;
+            status.textContent = message;
+        };
+        const accept = position => {
             const field = container.querySelector('[data-location-value]');
             field.value = `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`;
-            status.textContent = `Akurasi sekitar ${Math.round(position.coords.accuracy)} m.`;
-            container.dataset.accuracy = String(position.coords.accuracy);
-            button.disabled = false;
+            container.querySelector('[data-location-accuracy]').value = String(Math.round(position.coords.accuracy));
+            finish(`Akurasi sekitar ${Math.round(position.coords.accuracy)} m.${maxAccuracy ? ` Memenuhi batas ${maxAccuracy} m.` : ''}`);
             showLocation(container);
             field.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        const timer = setTimeout(() => finish(best
+            ? `Akurasi terbaik baru ${Math.round(best.coords.accuracy)} m, belum memenuhi batas ${maxAccuracy} m. Pindah ke tempat terbuka atau dekat jendela, aktifkan mode akurasi tinggi, lalu coba lagi.`
+            : 'Lokasi tidak dapat diambil. Pastikan GPS aktif, lalu coba lagi.'), 30000);
+        status.textContent = 'Mencari sinyal GPS…';
+        button.disabled = true;
+        watch = navigator.geolocation.watchPosition(position => {
+            if (!best || position.coords.accuracy < best.coords.accuracy) best = position;
+            if (!maxAccuracy || best.coords.accuracy <= maxAccuracy) return accept(best);
+            status.textContent = `Mencari sinyal GPS… akurasi saat ini ${Math.round(best.coords.accuracy)} m (harus ${maxAccuracy} m atau lebih baik).`;
         }, error => {
-            button.disabled = false;
-            status.textContent = error.code === 1
-                ? 'Izin lokasi ditolak. Izinkan akses lokasi di pengaturan browser, lalu tekan tombol lagi.'
-                : 'Lokasi tidak dapat diambil. Pastikan GPS aktif, lalu coba lagi.';
-        }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+            if (error.code === 1) finish('Izin lokasi ditolak. Izinkan akses lokasi di pengaturan browser, lalu tekan tombol lagi.');
+        }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
     });
 
     // The captured point on a map (location-map.js), with a link to the full map.
@@ -1135,7 +1155,7 @@
         if (!match) return;
         const [lat, lng] = [Number(match[1]), Number(match[2])];
         const canvas = container.querySelector('[data-location-canvas]');
-        canvas.hidden = !window.locationMap?.(canvas, lat, lng, Number(container.dataset.accuracy || 0));
+        canvas.hidden = !window.locationMap?.(canvas, lat, lng, Number(container.querySelector('[data-location-accuracy]').value || 0));
         container.querySelector('[data-location-coords]').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
         container.querySelector('[data-location-link]').href = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`;
     }

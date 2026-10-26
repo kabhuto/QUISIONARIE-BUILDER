@@ -166,6 +166,30 @@ class DynamicAnswersTest extends TestCase
         $this->assertSame('-7.0321, 112.7464', SurveyResponse::query()->sole()->answers['q-lokasi']);
     }
 
+    public function test_a_location_can_demand_a_gps_accuracy(): void
+    {
+        $survey = $this->makeSurvey([
+            $this->question('q-lokasi', 'location', 'Lokasi absen', ['required' => true, 'location' => ['max_accuracy' => 10]]),
+        ]);
+        $point = '-7.0453, 112.7380';
+
+        $this->post(route('form.store', $survey), ['answers' => ['q-lokasi' => $point]])
+            ->assertSessionHasErrors(['answers.q-lokasi' => 'Lokasi absen harus direkam dengan GPS (akurasi paling banyak 10 m).']);
+        $this->post(route('form.store', $survey), ['answers' => ['q-lokasi' => $point, 'q-lokasi__akurasi' => '35']])
+            ->assertSessionHasErrors(['answers.q-lokasi' => 'Akurasi Lokasi absen sekitar 35 m, harus paling banyak 10 m. Perbarui lokasi di tempat terbuka.']);
+        $this->post(route('form.store', $survey), ['answers' => ['q-lokasi' => $point, 'q-lokasi__akurasi' => '8.4']])
+            ->assertRedirect(route('form.thanks', $survey));
+
+        $this->assertSame(['q-lokasi' => $point, 'q-lokasi__akurasi' => 8], SurveyResponse::query()->sole()->answers);
+
+        // The builder keeps the limit, and empties it when it is cleared.
+        $location = fn (mixed $limit): array => $this->question('q-lokasi', 'location', 'Lokasi', ['location' => ['max_accuracy' => $limit]]);
+        $this->put(route('surveys.update', $survey), $this->builderPayload([$location(10)]))->assertSessionHasNoErrors();
+        $this->assertSame(['max_accuracy' => 10], $survey->fresh()->blocks[0]['questions'][0]['location']);
+        $this->put(route('surveys.update', $survey), $this->builderPayload([$location(null)]))->assertSessionHasNoErrors();
+        $this->assertSame(['max_accuracy' => null], $survey->fresh()->blocks[0]['questions'][0]['location']);
+    }
+
     public function test_files_are_uploaded_into_the_survey_folder(): void
     {
         Storage::fake('public');
