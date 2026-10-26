@@ -214,9 +214,14 @@
                             @break
                         @case('location')
                             <div class="cawi-location" data-location>
-                                <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="text" inputmode="decimal" maxlength="80" value="{{ $old }}" placeholder="lintang, bujur — mis. -7.0321, 112.7464">
+                                {{-- Taken from the device's GPS only; the point is shown on a map. --}}
+                                <input id="{{ $inputId }}" name="{{ $name }}" type="hidden" value="{{ $old }}" data-location-value>
                                 <button class="cawi-button is-ghost" type="button" data-locate>📍 Ambil lokasi saat ini</button>
                                 <p class="fill-hint" data-location-status></p>
+                                <div class="cawi-location-map" data-location-map hidden>
+                                    <div class="cawi-location-canvas" role="img" aria-label="Peta lokasi" data-location-canvas></div>
+                                    <p class="fill-hint"><span data-location-coords></span> · <a href="#" target="_blank" rel="noopener" data-location-link>Buka di peta</a></p>
+                                </div>
                             </div>
                             @break
                         @case('file')

@@ -6,6 +6,7 @@
     <title>@yield('title') | Ruang Kuesioner</title>
     <link rel="stylesheet" href="{{ asset('css/builder.css') }}">
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    @stack('head')
 </head>
 <body>
     <header class="topbar">

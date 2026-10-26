@@ -955,7 +955,7 @@
         if ([answer].flat().includes(OTHER_VALUE) && question.querySelector('[data-other-text]') && !fieldValue(question.querySelector('[data-other-text]'))) return 'Sebutkan jawaban lainnya.';
         if (question.dataset.mask && !maskPattern(question.dataset.mask).test(answer)) return `Isi sesuai format ${question.dataset.mask}.`;
         if (type === 'time' && !/^\d{2}:\d{2}$/.test(answer)) return 'Isi jam dengan format JJ:MM.';
-        if (type === 'location' && !locationPattern.test(answer)) return 'Isi koordinat "lintang, bujur", mis. -7.0321, 112.7464.';
+        if (type === 'location' && !locationPattern.test(answer)) return 'Tekan "Ambil lokasi saat ini" untuk merekam lokasi.';
         if (type === 'file') {
             const file = question.querySelector('input[type="file"]').files[0];
             const maxMb = Number(question.querySelector('input[type="file"]').dataset.maxMb || 5);
@@ -1053,6 +1053,7 @@
         form.querySelectorAll('[data-currency]').forEach(formatRupiah);
         form.querySelectorAll('[data-slider]').forEach(syncSlider);
         form.querySelectorAll('[data-signature]').forEach(drawSignature);
+        form.querySelectorAll('[data-location]').forEach(showLocation);
 
         const savedAt = new Date(draft.savedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
         if (draftStatus) draftStatus.innerHTML = `Melanjutkan draf ${savedAt}. <button type="button" class="link-button" data-clear-draft>Mulai ulang</button>`;
@@ -1104,19 +1105,42 @@
         const container = button.closest('[data-location]');
         const status = container.querySelector('[data-location-status]');
         if (!navigator.geolocation) {
-            status.textContent = 'Perangkat ini tidak mendukung pengambilan lokasi. Isi koordinat secara manual.';
+            status.textContent = 'Perangkat ini tidak mendukung pengambilan lokasi. Coba dengan HP atau browser lain.';
             return;
         }
         status.textContent = 'Mengambil lokasi…';
+        button.disabled = true;
         navigator.geolocation.getCurrentPosition(position => {
-            const field = container.querySelector('input');
+            const field = container.querySelector('[data-location-value]');
             field.value = `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`;
             status.textContent = `Akurasi sekitar ${Math.round(position.coords.accuracy)} m.`;
+            container.dataset.accuracy = String(position.coords.accuracy);
+            button.disabled = false;
+            showLocation(container);
             field.dispatchEvent(new Event('input', { bubbles: true }));
         }, error => {
-            status.textContent = error.code === 1 ? 'Izin lokasi ditolak. Izinkan akses lokasi atau isi koordinat secara manual.' : 'Lokasi tidak dapat diambil. Coba lagi atau isi secara manual.';
-        }, { enableHighAccuracy: true, timeout: 15000 });
+            button.disabled = false;
+            status.textContent = error.code === 1
+                ? 'Izin lokasi ditolak. Izinkan akses lokasi di pengaturan browser, lalu tekan tombol lagi.'
+                : 'Lokasi tidak dapat diambil. Pastikan GPS aktif, lalu coba lagi.';
+        }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
     });
+
+    // The captured point on a map (location-map.js), with a link to the full map.
+    function showLocation(container) {
+        const match = container.querySelector('[data-location-value]').value.trim().match(locationPattern);
+        const map = container.querySelector('[data-location-map]');
+        map.hidden = !match;
+        container.querySelector('[data-locate]').textContent = match ? '🔄 Perbarui lokasi' : '📍 Ambil lokasi saat ini';
+        if (!match) return;
+        const [lat, lng] = [Number(match[1]), Number(match[2])];
+        const canvas = container.querySelector('[data-location-canvas]');
+        canvas.hidden = !window.locationMap?.(canvas, lat, lng, Number(container.dataset.accuracy || 0));
+        container.querySelector('[data-location-coords]').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        container.querySelector('[data-location-link]').href = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`;
+    }
+
+    form.querySelectorAll('[data-location]').forEach(showLocation);
 
     form.addEventListener('change', event => {
         if (!event.target.matches('[data-file] input[type="file"]')) return;

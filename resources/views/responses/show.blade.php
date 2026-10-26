@@ -141,7 +141,15 @@
                                     @endif
                                 </dd>
                             @elseif ($question['type'] === 'location')
-                                <dd>{{ $answer }} · <a href="https://www.openstreetmap.org/?mlat={{ urlencode(trim(explode(',', $answer)[0])) }}&mlon={{ urlencode(trim(explode(',', $answer)[1] ?? '')) }}#map=17/{{ urlencode(trim(explode(',', $answer)[0])) }}/{{ urlencode(trim(explode(',', $answer)[1] ?? '')) }}" target="_blank" rel="noopener">Lihat di peta</a></dd>
+                                <dd>
+                                    {{ $answer }} · <a href="https://www.openstreetmap.org/?mlat={{ urlencode(trim(explode(',', $answer)[0])) }}&mlon={{ urlencode(trim(explode(',', $answer)[1] ?? '')) }}#map=17/{{ urlencode(trim(explode(',', $answer)[0])) }}/{{ urlencode(trim(explode(',', $answer)[1] ?? '')) }}" target="_blank" rel="noopener">Lihat di peta</a>
+                                    @if (preg_match('/^(-?\d{1,2}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/', (string) $answer, $point))
+                                        <div class="detail-map" role="img" aria-label="Peta {{ $question['text'] ?? $question['label'] }}" data-map-point="{{ $point[1] }},{{ $point[2] }}"></div>
+                                        @pushOnce('head')
+                                            @include('partials.leaflet')
+                                        @endPushOnce
+                                    @endif
+                                </dd>
                             @else
                                 <dd>{{ $response->displayAnswer($question) }}</dd>
                             @endif

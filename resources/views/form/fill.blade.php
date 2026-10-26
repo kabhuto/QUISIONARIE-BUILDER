@@ -21,6 +21,9 @@
     <meta name="robots" content="noindex">
     <title>{{ $survey->title }}</title>
     <link rel="stylesheet" href="{{ asset('css/fill.css') }}">
+    @if (collect($survey->questions())->contains('type', 'location'))
+        @include('partials.leaflet')
+    @endif
 </head>
 <body class="fill-page" style="--accent: {{ $survey->themeColor() }}">
     @if ($isPreview)
