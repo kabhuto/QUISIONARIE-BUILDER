@@ -58,3 +58,21 @@ php artisan test
 - Formulir responden bergaya CAWI dengan simpan sementara di perangkat
 - Cetak formulir kertas (kosong atau terisi), tampilan listing, ekspor CSV
 - Ekspor/impor JSON dan validasi data memakai JSON sebagai template aturan
+- Pengaturan per pertanyaan (Opsi / Logika / Validasi): wajib, tersembunyi, nonaktif, logika DAN/ATAU, pemeriksaan konsistensi galat/peringatan, pembanding rentang, tag jawaban `@`
+- Isian dinamis ala FormGear/FASIH: **Hitungan (rumus)** seperti `{{201}} + {{202}}`, `round()`, `years()`, `sum()`; tag jawaban `{{101}}` di teks pertanyaan; opsi dari jawaban pertanyaan lain; opsi "Lainnya (sebutkan)"; masking (`99.99.999`); jam; lokasi GPS; unggah foto/berkas
+- **Rincian berulang (roster)**: blok diulang per jumlah, per pilihan yang dicentang, atau per nama di **Daftar nama**; logika, validasi, dan rumus berjalan per baris; `{{@baris}}` menampilkan nama rincian
+- **Data referensi** (CSV) untuk daftar pilihan, termasuk pilihan berjenjang (kecamatan → desa), atau opsi dari API luar
+- **Penugasan**: tautan pribadi berpredata (bisa dikunci), sekali kirim; dibuat dari CSV atau lewat API
+- **API v1** bertoken (menu *Akses API*, berisi dokumentasi): kuesioner, respons (satu/batch), validasi tanpa simpan, penugasan, data referensi; **webhook** respons baru bertanda tangan HMAC
+- **FormGear/FASIH**: impor template (+ validation + preset) dan ekspor ZIP `template.json`, `validation.json`, `preset.json`
+
+## API singkat
+
+Buat token di menu **Akses API**, lalu kirim header `Authorization: Bearer <token>`:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/surveys -H "Authorization: Bearer rk_xxx"
+curl -X POST http://127.0.0.1:8000/api/v1/surveys/1/validate -H "Authorization: Bearer rk_xxx"      -H "Content-Type: application/json" -d '{"answers": {"q-jk": "Laki-laki", "q-hamil": "Ya"}}'
+```
+
+Daftar lengkap endpoint dan contohnya ada di halaman Akses API.

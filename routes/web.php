@@ -18,6 +18,7 @@ Route::redirect('/', '/surveys');
 // Admin: build, preview, publish and review surveys.
 Route::post('/surveys/import', [SurveyJsonController::class, 'import'])->name('surveys.import');
 Route::get('/surveys/{survey}/export.json', [SurveyJsonController::class, 'export'])->name('surveys.export-json');
+Route::get('/surveys/{survey}/formgear.zip', [SurveyJsonController::class, 'exportFormGear'])->name('surveys.export-formgear');
 Route::get('/validasi', [DataValidationController::class, 'create'])->name('validation.create');
 Route::post('/validasi', [DataValidationController::class, 'store'])->name('validation.store');
 Route::resource('surveys', SurveyController::class)->except('show');

@@ -390,3 +390,6 @@ body{background:#fff}.topbar,.page-intro,.toolbox,.settings-panel,.editor-toolba
 .form-block.is-roster{box-shadow:inset 3px 0 0 #e8a15b}
 .list-preview{display:flex;flex-direction:column;gap:3px;font-size:9px;color:#a4b2af}
 .list-preview b{color:#2b7a6f;font-weight:600}
+.import-notes{position:fixed;z-index:25;right:24px;bottom:24px;width:min(460px,calc(100vw - 48px));max-height:50vh;overflow:auto;background:#fffaf2;border:1px solid #f0d49a;border-left:4px solid #d99a2b;border-radius:4px;box-shadow:0 8px 24px #183a3b26;padding:10px 14px;font-size:11px;color:#6b5320}
+.import-notes summary{cursor:pointer;font-weight:700;font-size:12px}
+.import-notes ul{margin:8px 0 0;padding-left:18px;line-height:1.55}

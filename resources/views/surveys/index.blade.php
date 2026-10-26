@@ -6,9 +6,9 @@
     <a class="button button-ghost" href="{{ route('validation.create') }}">Validasi data</a>
     <form class="import-form" method="POST" action="{{ route('surveys.import') }}" enctype="multipart/form-data">
         @csrf
-        <label class="button button-ghost">
-            Impor JSON
-            <input class="sr-only" type="file" name="file" accept=".json,application/json" onchange="this.form.submit()">
+        <label class="button button-ghost" title="File ekspor JSON Ruang Kuesioner, atau template FormGear/FASIH (boleh pilih template.json + validation.json + preset.json sekaligus)">
+            Impor JSON / FormGear
+            <input class="sr-only" type="file" name="files[]" accept=".json,application/json" multiple onchange="this.form.submit()">
         </label>
     </form>
     <a class="button button-primary" href="{{ route('surveys.create') }}">
@@ -72,6 +72,7 @@
                 <a class="button button-ghost" href="{{ route('surveys.preview', $survey) }}">Pratinjau</a>
                 <a class="button button-ghost" href="{{ route('surveys.responses.index', $survey) }}">Respons</a>
                 <a class="button button-ghost" href="{{ route('surveys.export-json', $survey) }}" title="Struktur, aturan validasi, dan semua respons">Ekspor JSON</a>
+                <a class="button button-ghost" href="{{ route('surveys.export-formgear', $survey) }}" title="Template, validasi, dan preset FormGear/FASIH (ZIP)">Ekspor FormGear</a>
                 @if ($survey->isPublished())
                     <input class="sr-only" type="text" value="{{ route('form.create', $survey) }}" id="share-{{ $survey->id }}" readonly tabindex="-1" aria-hidden="true">
                     <button class="button button-ghost" type="button" data-copy="#share-{{ $survey->id }}">Salin tautan</button>

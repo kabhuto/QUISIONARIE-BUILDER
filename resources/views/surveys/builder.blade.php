@@ -83,6 +83,16 @@
     @if (session('status'))
         <div class="toast" role="status">{{ session('status') }}</div>
     @endif
+    @if (session('importNotes'))
+        <details class="import-notes" open>
+            <summary>{{ count(session('importNotes')) }} catatan impor — periksa bagian berikut</summary>
+            <ul>
+                @foreach (session('importNotes') as $note)
+                    <li>{{ $note }}</li>
+                @endforeach
+            </ul>
+        </details>
+    @endif
 
     @if ($errors->any())
         <div class="toast toast-error" role="alert">

@@ -148,7 +148,7 @@ class StoreSurveyRequest extends FormRequest
             "{$question}.lookup.value_column" => ['nullable', 'string', 'max:120'],
             "{$question}.lookup.label_column" => ['nullable', 'string', 'max:120'],
             "{$question}.lookup.filter_column" => ['nullable', 'string', 'max:120'],
-            "{$question}.lookup.url" => ['nullable', 'url:http,https', 'max:500'],
+            "{$question}.lookup.url" => ['nullable', 'string', 'max:500', 'regex:/^https?:\/\/[^\s]+$/i'],
             "{$question}.lookup.data_path" => ['nullable', 'string', 'max:120'],
             "{$question}.lookup.value_key" => ['nullable', 'string', 'max:120'],
             "{$question}.lookup.label_key" => ['nullable', 'string', 'max:120'],
