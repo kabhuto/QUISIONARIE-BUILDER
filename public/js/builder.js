@@ -86,6 +86,7 @@
             other_option: false,
             other_label: '',
             mask: '',
+            lookup: null,
             ...(type === 'calc' ? { formula: '', format: 'number', decimals: 0 } : {}),
             ...(type === 'file' ? { file: { accept: 'image', max_mb: 5 } } : {}),
             ...(type === 'list' ? { list: { max: 10 } } : {}),
@@ -238,6 +239,9 @@
             other_option: Boolean(question.other_option),
             other_label: String(question.other_label ?? ''),
             mask: question.type === 'short' ? String(question.mask ?? '') : '',
+            lookup: question.type === 'dropdown' && config.lookupSources[question.lookup?.source]
+                ? Object.fromEntries(['source', 'reference', 'value_column', 'label_column', 'filter_column', 'url', 'data_path', 'value_key', 'label_key', 'param', 'depends_on'].map(key => [key, String(question.lookup[key] ?? '')]))
+                : null,
         };
         if (question.type === 'calc') {
             normalized.formula = String(question.formula ?? '');
@@ -452,7 +456,49 @@
             if (!source || source.type !== 'multiple' || !earlierIds.includes(source.id)) return 'Sumber pilihan harus pertanyaan pilihan ganda sebelumnya.';
         }
         if (question.other_option && question.options.includes('Lainnya')) return 'Hapus pilihan "Lainnya" dari daftar; opsi "Lainnya (sebutkan)" sudah otomatis.';
+        if (question.lookup) {
+            const lookup = question.lookup;
+            if (lookup.depends_on && !earlierQuestions('question', question.id).some(item => item.question.id === lookup.depends_on)) return 'Pilihan bertingkat harus bergantung pada pertanyaan sebelumnya.';
+            if (lookup.source === 'api') return lookup.url.trim() ? '' : 'Alamat API belum diisi.';
+            const list = config.referenceLists.find(item => item.slug === lookup.reference);
+            if (!list) return 'Pilih data referensi.';
+            if (!list.columns.includes(lookup.value_column)) return 'Pilih kolom nilai (kode) data referensi.';
+            if (lookup.depends_on && !list.columns.includes(lookup.filter_column)) return 'Pilihan bertingkat membutuhkan kolom penyaring.';
+        }
         return '';
+    }
+
+    function lookupSettings(question) {
+        const lookup = question.lookup;
+        const parents = earlierQuestions('question', question.id);
+        const parentSelect = `<label class="setting-field"><span>Bergantung pada jawaban <small>(pilihan bertingkat)</small></span>
+            <select class="setting-select" data-lookup-field="depends_on">
+                <option value="">Tidak bergantung</option>
+                ${parents.map(item => `<option value="${escapeHtml(item.question.id)}" ${item.question.id === lookup.depends_on ? 'selected' : ''}>${escapeHtml(questionLabel(item))}</option>`).join('')}
+            </select></label>`;
+        if (lookup.source === 'api') {
+            const field = (key, label, placeholder) => `<label class="setting-field"><span>${label}</span><input class="setting-select mono-input" type="text" maxlength="500" value="${escapeHtml(lookup[key])}" placeholder="${escapeHtml(placeholder)}" data-lookup-field="${key}"></label>`;
+            return `${field('url', 'Alamat API (GET, JSON)', 'https://contoh.go.id/api/desa')}
+                ${field('data_path', 'Letak daftar di JSON <small>(kosong = akar)</small>', 'data')}
+                <div class="setting-pair">${field('value_key', 'Kunci nilai', 'id')}${field('label_key', 'Kunci label', 'nama')}</div>
+                ${parentSelect}
+                ${lookup.depends_on ? field('param', 'Nama parameter penyaring <small>(atau tulis {value} di alamat)</small>', 'kecamatan') : ''}
+                <p class="setting-note">Seperti sourceAPI FormGear. Jawaban pertanyaan induk dikirim sebagai parameter; daftar disimpan sementara 10 menit.</p>`;
+        }
+        const list = config.referenceLists.find(item => item.slug === lookup.reference);
+        const columnSelect = (key, label, optional) => `<label class="setting-field"><span>${label}</span><select class="setting-select" data-lookup-field="${key}">
+            <option value="">${optional ? '(sama dengan nilai)' : 'Pilih kolom…'}</option>
+            ${(list?.columns ?? []).map(column => `<option value="${escapeHtml(column)}" ${column === lookup[key] ? 'selected' : ''}>${escapeHtml(column)}</option>`).join('')}
+        </select></label>`;
+        return `<label class="setting-field"><span>Data referensi</span>
+                <select class="setting-select" data-lookup-field="reference">
+                    <option value="">Pilih data…</option>
+                    ${config.referenceLists.map(item => `<option value="${escapeHtml(item.slug)}" ${item.slug === lookup.reference ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}
+                </select></label>
+            ${config.referenceLists.length ? '' : `<p class="setting-note">Belum ada data referensi. <a href="${escapeHtml(config.referencesUrl)}" target="_blank" rel="noopener">Unggah CSV</a> terlebih dahulu.</p>`}
+            ${list ? `<div class="setting-pair">${columnSelect('value_column', 'Kolom nilai (kode)', false)}${columnSelect('label_column', 'Kolom label', true)}</div>
+            ${parentSelect}
+            ${lookup.depends_on ? columnSelect('filter_column', 'Kolom penyaring (berisi jawaban induk)', false) : ''}` : ''}`;
     }
 
     function tagPicker(target, question, label = 'Sisipkan jawaban…') {
@@ -650,6 +696,10 @@
         blocks.forEach(block => {
             if (removed.has(block.condition?.question_id)) block.condition = null;
             if (removed.has(block.repeat?.source)) block.repeat = null;
+            block.questions.forEach(question => {
+                if (question.lookup && removed.has(question.lookup.depends_on)) question.lookup.depends_on = '';
+                if (removed.has(question.options_from)) question.options_from = '';
+            });
             block.questions.forEach(question => {
                 if (question.logic && !pruneGroup(question.logic.conditions, removed).rules.length) question.logic = null;
                 question.validation.checks = question.validation.checks.filter(check => pruneGroup(check.conditions, removed).rules.length > 0);
@@ -905,6 +955,12 @@
     }
 
     function previewFor(question) {
+        if (question.lookup) {
+            const list = config.referenceLists.find(item => item.slug === question.lookup.reference);
+            const from = question.lookup.source === 'api' ? `API ${(question.lookup.url.match(/^https?:\/\/([^/]+)/) ?? [])[1] ?? ''}` : `data referensi “${list?.name ?? '?'}”`;
+            const parent = question.lookup.depends_on ? `, menurut jawaban ${numbers.get(question.lookup.depends_on) ?? '?'}` : '';
+            return `<div class="dynamic-preview">⇣ Daftar pilihan dari ${escapeHtml(from)}${escapeHtml(parent)}</div>`;
+        }
         if (choiceTypes.includes(question.type) && question.options_from) {
             return `<div class="dynamic-preview">⇠ Pilihan diambil dari jawaban pertanyaan ${escapeHtml(numbers.get(question.options_from) ?? '?')}</div>`;
         }
@@ -978,7 +1034,7 @@
                     ${description}
                     <span class="logic-slot">${logicBadge('question', question.id)}</span>
                     <div class="question-preview">${previewFor(question)}</div>
-                    ${choiceTypes.includes(question.type) && !question.options_from ? `<label class="option-editor"><span>PILIHAN</span><textarea data-field="options" aria-label="Pilihan jawaban, satu per baris" placeholder="Satu pilihan per baris">${escapeHtml(question.options.join('\n'))}</textarea></label>` : ''}
+                    ${choiceTypes.includes(question.type) && !question.options_from && !question.lookup ? `<label class="option-editor"><span>PILIHAN</span><textarea data-field="options" aria-label="Pilihan jawaban, satu per baris" placeholder="Satu pilihan per baris">${escapeHtml(question.options.join('\n'))}</textarea></label>` : ''}
                     ${question.type === 'matrix' ? `<div class="matrix-editor">
                         <label class="option-editor"><span>BARIS</span><textarea data-field="matrix-rows" aria-label="Baris matriks, satu per baris" placeholder="Satu pernyataan per baris">${escapeHtml(question.matrix.rows.join('\n'))}</textarea></label>
                         <label class="option-editor"><span>KOLOM</span><textarea data-field="matrix-columns" aria-label="Kolom pilihan matriks, satu per baris" placeholder="Satu pilihan per baris">${escapeHtml(question.matrix.columns.join('\n'))}</textarea></label>
@@ -1096,16 +1152,19 @@
             ? `<select class="setting-select" data-option="prefill"><option value="">(tanpa nilai awal)</option>${question.options.map(option => `<option value="${escapeHtml(option)}" ${option === question.prefill ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select>`
             : `<input class="setting-select" type="${question.type === 'date' ? 'date' : (['number', 'currency'].includes(question.type) ? 'number' : 'text')}" maxlength="255" value="${escapeHtml(question.prefill)}" data-option="prefill">`;
         const multipleSources = earlierQuestions('question', question.id).filter(item => item.question.type === 'multiple');
+        const sourceValue = question.lookup ? `lookup:${question.lookup.source}` : question.options_from;
         const dynamicSettings = [
             choiceTypes.includes(question.type) ? `
                 <label class="setting-field"><span>Sumber pilihan</span>
                     <select class="setting-select" data-option="options_from">
                         <option value="">Ditulis di lembar</option>
-                        ${multipleSources.map(item => `<option value="${escapeHtml(item.question.id)}" ${item.question.id === question.options_from ? 'selected' : ''}>Jawaban ${escapeHtml(questionLabel(item))}</option>`).join('')}
+                        ${multipleSources.map(item => `<option value="${escapeHtml(item.question.id)}" ${item.question.id === sourceValue ? 'selected' : ''}>Jawaban ${escapeHtml(questionLabel(item))}</option>`).join('')}
+                        ${question.type === 'dropdown' ? Object.entries(config.lookupSources).map(([source, label]) => `<option value="lookup:${source}" ${sourceValue === `lookup:${source}` ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('') : ''}
                     </select>
                 </label>
-                ${multipleSources.length ? '' : '<p class="setting-note">Pilihan bisa diambil dari jawaban pertanyaan “Pilihan lebih dari satu” sebelumnya, mis. “Dari hobi yang dipilih, mana yang paling disukai?”.</p>'}
-                ${question.options_from ? '' : `<label class="required-toggle"><input type="checkbox" data-option="other_option" ${question.other_option ? 'checked' : ''}><span class="toggle-track"></span><span>Tambah opsi “Lainnya (sebutkan)”</span></label>
+                ${question.lookup ? lookupSettings(question) : ''}
+                ${multipleSources.length || question.lookup ? '' : `<p class="setting-note">Pilihan bisa diambil dari jawaban pertanyaan “Pilihan lebih dari satu” sebelumnya${question.type === 'dropdown' ? ', dari Data referensi (mis. daftar desa, bisa berjenjang), atau dari API' : ''}.</p>`}
+                ${question.options_from || question.lookup ? '' : `<label class="required-toggle"><input type="checkbox" data-option="other_option" ${question.other_option ? 'checked' : ''}><span class="toggle-track"></span><span>Tambah opsi “Lainnya (sebutkan)”</span></label>
                 ${question.other_option ? `<label class="setting-field"><span>Teks opsi lainnya</span><input class="setting-select" type="text" maxlength="60" value="${escapeHtml(question.other_label)}" placeholder="Lainnya (sebutkan)" data-option="other_label"></label>` : ''}`}` : '',
             question.type === 'short' ? `
                 <label class="setting-field"><span>Format isian (masking) <small>9 angka · a huruf · * huruf/angka</small></span>
@@ -1422,6 +1481,7 @@
         if (type === 'calc' && question.formula === undefined) Object.assign(question, { formula: '', format: 'number', decimals: 0 });
         if (type === 'file' && !question.file) question.file = { accept: 'image', max_mb: 5 };
         if (!choiceTypes.includes(type)) Object.assign(question, { options_from: '', other_option: false });
+        if (type !== 'dropdown') question.lookup = null;
         if (type !== 'short') question.mask = '';
         question.validation.rules = question.validation.rules.filter(rule => config.validationRules[rule.type].types.includes(type));
     }
@@ -1616,6 +1676,10 @@
             return afterPanelChange(question, { preview: ['prefill', 'placeholder'].includes(option) });
         }
 
+        if (target.dataset.lookupField && target.tagName === 'INPUT' && question.lookup) {
+            question.lookup[target.dataset.lookupField] = target.value;
+            return afterPanelChange(question, { preview: true });
+        }
         if (target.dataset.rangePart) {
             const row = target.closest('[data-path]');
             const rule = nodeAt(scopeRoot(question, row.dataset.scope), parsePath(row.dataset.path));
@@ -1715,11 +1779,22 @@
             return afterPanelChange(question);
         }
         if (option === 'options_from' || option === 'other_option') {
-            if (option === 'options_from') question.options_from = target.value;
-            else question.other_option = target.checked;
-            if (question.options_from) question.other_option = false;
+            if (option === 'options_from') {
+                const lookupSource = target.value.startsWith('lookup:') ? target.value.slice(7) : '';
+                question.options_from = lookupSource ? '' : target.value;
+                question.lookup = lookupSource ? { source: lookupSource, reference: '', value_column: '', label_column: '', filter_column: '', url: '', data_path: '', value_key: '', label_key: '', param: '', depends_on: '' } : null;
+            } else {
+                question.other_option = target.checked;
+            }
+            if (question.options_from || question.lookup) question.other_option = false;
             render();
             return;
+        }
+        const lookupField = target.dataset.lookupField;
+        if (lookupField && question.lookup) {
+            question.lookup[lookupField] = target.value;
+            if (lookupField === 'reference') Object.assign(question.lookup, { value_column: '', label_column: '', filter_column: '' });
+            return afterPanelChange(question, { rerender: target.tagName === 'SELECT', preview: true });
         }
         if (option === 'format' || option === 'file_accept') {
             if (option === 'format') question.format = target.value;

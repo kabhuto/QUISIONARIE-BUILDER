@@ -6,8 +6,9 @@ use App\Support\Formula;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['answers', 'flags'])]
+#[Fillable(['answers', 'flags', 'source'])]
 class SurveyResponse extends Model
 {
     /**
@@ -29,6 +30,16 @@ class SurveyResponse extends Model
     public function survey(): BelongsTo
     {
         return $this->belongsTo(Survey::class);
+    }
+
+    /**
+     * The assignment this response answered, if any.
+     *
+     * @return HasOne<Assignment, $this>
+     */
+    public function assignment(): HasOne
+    {
+        return $this->hasOne(Assignment::class, 'response_id');
     }
 
     /**
@@ -55,26 +66,37 @@ class SurveyResponse extends Model
         // A question in a repeating block holds one answer per row: "1) … | 2) …".
         if (! empty($question['in_roster']) && is_array($answer)) {
             $others = (array) ($this->answers[$question['id'].Survey::OTHER_SUFFIX] ?? []);
+            $labels = (array) ($this->answers[$question['id'].Survey::LABEL_SUFFIX] ?? []);
 
             return collect($answer)
-                ->map(fn ($value, int $row): string => self::displayValue($question, $value, (string) ($others[$row] ?? '')))
+                ->map(fn ($value, int $row): string => self::displayValue($question, $value, (string) ($others[$row] ?? ''), (string) ($labels[$row] ?? '')))
                 ->filter(fn (string $text): bool => $text !== '')
                 ->map(fn (string $text, int $row): string => ($row + 1).') '.$text)
                 ->implode(' | ');
         }
 
-        return self::displayValue($question, $answer, (string) ($this->answers[$question['id'].Survey::OTHER_SUFFIX] ?? ''));
+        return self::displayValue(
+            $question,
+            $answer,
+            (string) ($this->answers[$question['id'].Survey::OTHER_SUFFIX] ?? ''),
+            (string) ($this->answers[$question['id'].Survey::LABEL_SUFFIX] ?? ''),
+        );
     }
 
     /**
-     * One value of a question as text; $other is the text typed with "Lainnya".
+     * One value of a question as text; $other is the text typed with "Lainnya", $label the name of
+     * a code chosen from a reference list or API.
      *
      * @param  array<string, mixed>  $question
      */
-    public static function displayValue(array $question, mixed $answer, string $other = ''): string
+    public static function displayValue(array $question, mixed $answer, string $other = '', string $label = ''): string
     {
         if ($answer === null || $answer === '' || $answer === []) {
             return '';
+        }
+
+        if ($label !== '' && is_scalar($answer) && $label !== (string) $answer) {
+            return $label.' ['.$answer.']';
         }
 
         $other = trim($other);

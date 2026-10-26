@@ -117,3 +117,18 @@
 .detail-photo{display:block;max-width:240px;max-height:180px;border-radius:4px;border:1px solid #d9e5e1;object-fit:cover}
 .detail-roster-wrap{overflow-x:auto;padding:10px 12px}
 .detail-roster-empty{padding:10px 12px;color:#82938f;font-size:12px;margin:0}
+.api-token-form{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+.api-token-form .share-url{flex:1 1 280px}
+.api-check{display:flex;gap:6px;align-items:center;font-size:12px;color:#4d6d67}
+.api-warning{margin:-6px 0 18px;color:#a33a2c;font-size:12px}
+.api-docs p,.api-docs li{font-size:12px;line-height:1.7;color:#355753}
+.api-docs h3{margin:22px 0 8px;font-size:13px;color:#1d4541}
+.api-docs pre,.validation-help pre{overflow-x:auto;background:#0f2a2b;color:#d6efe7;padding:14px 16px;border-radius:4px;font-size:11px;line-height:1.6}
+.api-docs code{font-family:var(--mono);font-size:11px;background:#eef4f2;padding:1px 4px;border-radius:3px}
+.api-docs pre code{background:none;padding:0}
+.api-table td:first-child{white-space:nowrap}
+.link-danger{border:0;background:none;color:#b3503f;cursor:pointer;font-size:12px;padding:0}
+.link-danger:hover{text-decoration:underline}
+.link-button{border:0;background:none;color:var(--teal,#1f6f63);cursor:pointer;font-size:12px;padding:0 4px}
+.assignment-link{width:min(420px,60vw);height:30px;font-size:11px}
+.muted{color:#82938f}

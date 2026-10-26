@@ -6,8 +6,9 @@
     $numbers = $survey->questionNumbers();
     $hasHelp = $intro['help_title'] !== '' || $intro['help_phone'] !== '' || $intro['help_email'] !== '';
     $guideLines = array_filter(array_map('trim', explode("\n", $intro['guide'])));
+    $assignment ??= null;
     $fillConfig = [
-        'draftKey' => 'quisioner:'.$survey->slug,
+        'draftKey' => 'quisioner:'.$survey->slug.($assignment ? ':'.$assignment->token : ''),
         'useDraft' => $canSubmit,
         'restoreDraft' => $canSubmit && ! $errors->any(),
     ];
@@ -123,6 +124,13 @@
 
                 <form class="fill-form" id="fill-form" method="POST" action="{{ $canSubmit ? route('form.store', $survey) : '#' }}" enctype="multipart/form-data" novalidate @if ($isPreview) data-preview @endif>
                     @csrf
+                    @if ($assignment)
+                        <input type="hidden" name="a" value="{{ $assignment->token }}">
+                        <div class="fill-assignment">Penugasan{{ $assignment->label ? ': '.$assignment->label : '' }} — sebagian jawaban sudah terisi dari data awal.</div>
+                    @endif
+                    @error('a')
+                        <div class="fill-alert" role="alert">{{ $message }}</div>
+                    @enderror
                     @foreach ($survey->blocks as $blockIndex => $block)
                         @php
                             $repeatSource = \App\Support\SurveyLogic::repeatSource($block);

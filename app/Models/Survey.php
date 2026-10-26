@@ -51,6 +51,11 @@ class Survey extends Model
 
     public const OTHER_SUFFIX = '__lainnya';
 
+    /**
+     * Where the label of a value chosen from a reference list or API is kept, next to the value.
+     */
+    public const LABEL_SUFFIX = '__label';
+
     public const DEFAULT_OTHER_LABEL = 'Lainnya (sebutkan)';
 
     /**
@@ -253,6 +258,7 @@ class Survey extends Model
         'topline_label' => 'FORMULIR PENDATAAN',
         'topline_label_position' => 'left',
         'form_code_position' => 'right',
+        'webhook_url' => '',
     ];
 
     public const DEFAULT_INTRO = [
@@ -328,6 +334,14 @@ class Survey extends Model
     public function responses(): HasMany
     {
         return $this->hasMany(SurveyResponse::class);
+    }
+
+    /**
+     * @return HasMany<Assignment, $this>
+     */
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(Assignment::class);
     }
 
     /**

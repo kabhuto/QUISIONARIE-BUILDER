@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreSurveyRequest;
+use App\Models\ReferenceList;
 use App\Models\Survey;
 use App\Support\FieldValidation;
 use App\Support\Formula;
+use App\Support\Lookup;
 use App\Support\SurveyLogic;
 use App\Support\SurveyTemplates;
 use Illuminate\Http\RedirectResponse;
@@ -121,6 +123,9 @@ class SurveyController extends Controller
                 'rosterTypes' => Survey::ROSTER_TYPES,
                 'maxRosterRows' => Survey::MAX_ROSTER_ROWS,
                 'maxListItems' => Survey::MAX_LIST_ITEMS,
+                'lookupSources' => Lookup::SOURCES,
+                'referenceLists' => ReferenceList::query()->orderBy('name')->get(['name', 'slug', 'columns'])->map(fn (ReferenceList $list): array => ['slug' => $list->slug, 'name' => $list->name, 'columns' => $list->columns])->values(),
+                'referencesUrl' => route('references.index'),
             ],
             'headerConfig' => [
                 'items' => $survey->headerItems(),

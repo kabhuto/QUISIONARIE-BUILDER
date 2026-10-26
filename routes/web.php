@@ -1,9 +1,12 @@
 <?php
 
+use App\Http\Controllers\ApiAccessController;
+use App\Http\Controllers\AssignmentController;
 use App\Http\Controllers\DataValidationController;
 use App\Http\Controllers\FormSubmissionController;
 use App\Http\Controllers\LogoController;
 use App\Http\Controllers\PublishedSurveyController;
+use App\Http\Controllers\ReferenceListController;
 use App\Http\Controllers\SurveyController;
 use App\Http\Controllers\SurveyJsonController;
 use App\Http\Controllers\SurveyPrintController;
@@ -28,8 +31,20 @@ Route::get('/logos', [LogoController::class, 'index'])->name('logos.index');
 Route::post('/logos', [LogoController::class, 'store'])->name('logos.store');
 Route::get('/surveys/{survey}/responses/export', [SurveyResponseController::class, 'export'])->name('surveys.responses.export');
 Route::resource('surveys.responses', SurveyResponseController::class)->only(['index', 'show'])->scoped(['response' => 'id']);
+Route::get('/surveys/{survey}/penugasan', [AssignmentController::class, 'index'])->name('assignments.index');
+Route::post('/surveys/{survey}/penugasan', [AssignmentController::class, 'store'])->name('assignments.store');
+Route::get('/surveys/{survey}/penugasan/export', [AssignmentController::class, 'export'])->name('assignments.export');
+Route::delete('/surveys/{survey}/penugasan/{assignment}', [AssignmentController::class, 'destroy'])->name('assignments.destroy')->scopeBindings();
+Route::get('/referensi', [ReferenceListController::class, 'index'])->name('references.index');
+Route::post('/referensi', [ReferenceListController::class, 'store'])->name('references.store');
+Route::get('/referensi/{referenceList:slug}', [ReferenceListController::class, 'show'])->name('references.show');
+Route::delete('/referensi/{referenceList:slug}', [ReferenceListController::class, 'destroy'])->name('references.destroy');
+Route::get('/akses-api', [ApiAccessController::class, 'index'])->name('api-access.index');
+Route::post('/akses-api', [ApiAccessController::class, 'store'])->name('api-access.store');
+Route::delete('/akses-api/{token}', [ApiAccessController::class, 'destroy'])->name('api-access.destroy');
 
 // Respondents: fill in a published survey by its public link.
 Route::get('/f/{survey:slug}', [FormSubmissionController::class, 'create'])->name('form.create');
 Route::post('/f/{survey:slug}', [FormSubmissionController::class, 'store'])->name('form.store');
 Route::get('/f/{survey:slug}/terima-kasih', [FormSubmissionController::class, 'thanks'])->name('form.thanks');
+Route::get('/f/{survey:slug}/pilihan/{question}', [FormSubmissionController::class, 'lookup'])->middleware('throttle:120,1')->name('form.lookup');

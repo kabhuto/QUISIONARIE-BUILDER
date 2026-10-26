@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Assignment;
 use App\Models\Survey;
 use App\Support\FieldValidation;
+use App\Support\Lookup;
 use App\Support\SurveyLogic;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
@@ -41,6 +43,24 @@ class SubmitSurveyResponseRequest extends FormRequest
     private array $confirmedWarnings = [];
 
     /**
+     * Consistency warnings still waiting for the respondent's confirmation.
+     *
+     * @var list<array<string, mixed>>
+     */
+    private array $pendingWarnings = [];
+
+    private ?Survey $resolvedSurvey = null;
+
+    /**
+     * Options fetched for lookup dropdowns, per field key (null: the outside API could not be reached).
+     *
+     * @var array<string, list<array{value: string, label: string}>|null>
+     */
+    private array $lookupOptions = [];
+
+    private Assignment|false|null $resolvedAssignment = null;
+
+    /**
      * Determine if the user is authorized to make this request.
      */
     public function authorize(): bool
@@ -48,9 +68,34 @@ class SubmitSurveyResponseRequest extends FormRequest
         return true;
     }
 
+    /**
+     * The survey as this submission sees it: an assignment's locked pre-filled answers are fixed.
+     */
     private function survey(): Survey
     {
-        return $this->route('survey');
+        if ($this->resolvedSurvey !== null) {
+            return $this->resolvedSurvey;
+        }
+
+        $survey = $this->route('survey');
+        $assignment = $this->assignment();
+
+        return $this->resolvedSurvey = $assignment ? $assignment->applyTo($survey) : $survey;
+    }
+
+    /**
+     * The assignment this submission answers, from the private link's token ("a").
+     */
+    public function assignment(): ?Assignment
+    {
+        if ($this->resolvedAssignment === null) {
+            $token = (string) $this->input('a', '');
+            $this->resolvedAssignment = $token === ''
+                ? false
+                : ($this->route('survey')->assignments()->where('token', $token)->first() ?? false);
+        }
+
+        return $this->resolvedAssignment ?: null;
     }
 
     /**
@@ -135,6 +180,19 @@ class SubmitSurveyResponseRequest extends FormRequest
         $options = Survey::optionsFor($field['question'], $field['known']);
 
         return Survey::hasOtherOption($field['question']) ? [...$options, Survey::OTHER_VALUE] : $options;
+    }
+
+    /**
+     * @param  array<string, mixed>  $field
+     * @return list<array{value: string, label: string}>|null
+     */
+    private function lookupOptionsOf(array $field): ?array
+    {
+        if (! array_key_exists($field['key'], $this->lookupOptions)) {
+            $this->lookupOptions[$field['key']] = Lookup::options($field['question'], $field['known']);
+        }
+
+        return $this->lookupOptions[$field['key']];
     }
 
     /**
@@ -226,7 +284,10 @@ class SubmitSurveyResponseRequest extends FormRequest
                 'code' => $question['code_length'] > 0
                     ? [$presence, 'digits:'.$question['code_length']]
                     : [$presence, 'string', 'max:50'],
-                'single', 'dropdown' => [$presence, 'string', Rule::in($options)],
+                'single' => [$presence, 'string', Rule::in($options)],
+                'dropdown' => Lookup::isLookup($question)
+                    ? [$presence, 'string', 'max:255', ...($this->lookupOptionsOf($field) === null ? [] : [Rule::in(array_column($this->lookupOptionsOf($field), 'value'))])]
+                    : [$presence, 'string', Rule::in($options)],
                 'short' => [$presence, 'string', $maxLength(255), ...($question['mask'] !== '' ? [$this->maskRule($question)] : [])],
                 'multiple' => [$presence, 'array', ...($field['state']['required'] ? ['min:1'] : [])],
                 default => [$presence, 'string', $maxLength(255)],
@@ -336,6 +397,21 @@ class SubmitSurveyResponseRequest extends FormRequest
     {
         return [
             function (Validator $validator) {
+                if ((string) $this->input('a', '') !== '') {
+                    $assignment = $this->assignment();
+                    $problem = match (true) {
+                        $assignment === null => 'Tautan penugasan tidak dikenal.',
+                        $assignment->isSubmitted() => 'Penugasan ini sudah dikirim.',
+                        $assignment->isExpired() => 'Penugasan ini sudah kedaluwarsa.',
+                        default => null,
+                    };
+                    if ($problem !== null) {
+                        $validator->errors()->add('a', $problem);
+
+                        return;
+                    }
+                }
+
                 foreach ($this->editableFields() as $field) {
                     $question = $field['question'];
                     $key = 'answers.'.$field['key'];
@@ -396,6 +472,11 @@ class SubmitSurveyResponseRequest extends FormRequest
                 continue;
             }
 
+            if ($check['level'] === 'warning') {
+                $this->pendingWarnings[] = ['question_id' => $question['id'], 'check_id' => $check['id'], 'message' => $check['message']]
+                    + ($field['row'] === null ? [] : ['row' => $field['row']]);
+            }
+
             $validator->errors()->add(
                 'answers.'.$field['key'],
                 $check['level'] === 'warning' ? 'Peringatan: '.$check['message'] : $check['message'],
@@ -411,6 +492,32 @@ class SubmitSurveyResponseRequest extends FormRequest
     public function flags(): ?array
     {
         return $this->confirmedWarnings === [] ? null : ['confirmed_warnings' => $this->confirmedWarnings];
+    }
+
+    /**
+     * Warnings that block sending until confirmed, for API callers.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function pendingWarnings(): array
+    {
+        return $this->pendingWarnings;
+    }
+
+    /**
+     * Calculated values and repeating-block rows for the submitted answers, for API callers.
+     *
+     * @return array{computed: array<string, mixed>, rows: array<string, list<string>>, visible: list<string>}
+     */
+    public function evaluation(): array
+    {
+        $analysis = $this->analysis();
+
+        return [
+            'computed' => $analysis['computed'],
+            'rows' => $analysis['rows'],
+            'visible' => array_keys(array_filter($analysis['states'], fn (array $state): bool => ! $state['hidden'])),
+        ];
     }
 
     /**
@@ -509,12 +616,13 @@ class SubmitSurveyResponseRequest extends FormRequest
                     if ($value !== '' && $value !== [] && $value !== null) {
                         $answers[$question['id']] = $value;
                     }
-                    // Keep the "Lainnya" text right after its answer.
-                    $otherKey = $question['id'].Survey::OTHER_SUFFIX;
-                    if (array_key_exists($otherKey, $answers)) {
-                        $other = $answers[$otherKey];
-                        unset($answers[$otherKey]);
-                        $answers[$otherKey] = $other;
+                    // Keep the "Lainnya" text and a looked-up label right after their answer.
+                    foreach ([Survey::LABEL_SUFFIX, Survey::OTHER_SUFFIX] as $suffix) {
+                        if (array_key_exists($question['id'].$suffix, $answers)) {
+                            $extra = $answers[$question['id'].$suffix];
+                            unset($answers[$question['id'].$suffix]);
+                            $answers[$question['id'].$suffix] = $extra;
+                        }
                     }
 
                     continue;
@@ -568,6 +676,15 @@ class SubmitSurveyResponseRequest extends FormRequest
             'location' => preg_replace('/\s*,\s*/', ', ', trim((string) $raw)),
             default => is_scalar($raw) ? trim((string) $raw) : '',
         };
+
+        // A value chosen from a reference list or API keeps its label next to it.
+        if (Lookup::isLookup($question) && is_string($answer) && $answer !== '' && ($label = Lookup::labelOf($this->lookupOptionsOf($field), $answer)) !== null) {
+            if ($row === null) {
+                $answers[$id.Survey::LABEL_SUFFIX] = $label;
+            } else {
+                $answers[$id.Survey::LABEL_SUFFIX][$row] = $label;
+            }
+        }
 
         $other = trim((string) $this->input('answers.'.$this->otherKey($field)));
         if (Survey::hasOtherOption($question) && $other !== '' && in_array(Survey::OTHER_VALUE, (array) $answer, true)) {

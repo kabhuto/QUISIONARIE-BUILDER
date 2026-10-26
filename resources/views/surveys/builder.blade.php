@@ -251,6 +251,10 @@
                     <label class="setting-field"><span>Pesan setelah mengirim</span>
                         <textarea class="setting-select setting-textarea" name="settings[thank_you_message]" rows="3" maxlength="500">{{ old('settings.thank_you_message', $settings['thank_you_message']) }}</textarea>
                     </label>
+                    <label class="setting-field"><span>Webhook respons baru <small>(opsional)</small></span>
+                        <input class="setting-select" type="url" name="settings[webhook_url]" maxlength="500" placeholder="https://aplikasi-anda/terima-respons" value="{{ old('settings.webhook_url', $settings['webhook_url'] ?? '') }}">
+                    </label>
+                    <p class="setting-note">Setiap respons baru dikirim sebagai JSON (POST) ke alamat ini, ditandatangani dengan header X-Ruang-Signature. Lihat menu API.</p>
                 </div>
                 <div class="setting-block">
                     <div class="setting-label"><span>Ukuran kertas cetak</span><span class="setting-value" id="paper-dimension">210 × 297 MM</span></div>

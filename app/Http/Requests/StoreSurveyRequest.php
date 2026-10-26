@@ -2,9 +2,11 @@
 
 namespace App\Http\Requests;
 
+use App\Models\ReferenceList;
 use App\Models\Survey;
 use App\Support\FieldValidation;
 use App\Support\Formula;
+use App\Support\Lookup;
 use App\Support\SurveyLogic;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
@@ -70,6 +72,7 @@ class StoreSurveyRequest extends FormRequest
             'settings.theme' => ['required', Rule::in(array_keys(Survey::THEMES))],
             'settings.numbering' => ['required', Rule::in(array_keys(Survey::NUMBERING_STYLES))],
             'settings.thank_you_message' => ['nullable', 'string', 'max:500'],
+            'settings.webhook_url' => ['nullable', 'url:http,https', 'max:500'],
             'settings.confidential' => ['required', 'boolean'],
             'settings.sheet_label' => ['nullable', 'string', 'max:60'],
             'settings.sheet_label_position' => ['nullable', Rule::in(array_keys(Survey::HEADER_SLOTS))],
@@ -139,6 +142,18 @@ class StoreSurveyRequest extends FormRequest
             "{$question}.file" => ['nullable', 'array'],
             "{$question}.file.accept" => ['sometimes', Rule::in(array_keys(Survey::FILE_KINDS))],
             "{$question}.file.max_mb" => ['sometimes', 'integer', 'between:1,'.Survey::MAX_FILE_MB],
+            "{$question}.lookup" => ['nullable', 'array'],
+            "{$question}.lookup.source" => ['sometimes', Rule::in(array_keys(Lookup::SOURCES))],
+            "{$question}.lookup.reference" => ['nullable', 'string', 'max:120'],
+            "{$question}.lookup.value_column" => ['nullable', 'string', 'max:120'],
+            "{$question}.lookup.label_column" => ['nullable', 'string', 'max:120'],
+            "{$question}.lookup.filter_column" => ['nullable', 'string', 'max:120'],
+            "{$question}.lookup.url" => ['nullable', 'url:http,https', 'max:500'],
+            "{$question}.lookup.data_path" => ['nullable', 'string', 'max:120'],
+            "{$question}.lookup.value_key" => ['nullable', 'string', 'max:120'],
+            "{$question}.lookup.label_key" => ['nullable', 'string', 'max:120'],
+            "{$question}.lookup.param" => ['nullable', 'string', 'max:60'],
+            "{$question}.lookup.depends_on" => ['nullable', 'string', 'max:80', self::ID_PATTERN],
             "{$question}.list" => ['nullable', 'array'],
             "{$question}.list.max" => ['sometimes', 'integer', 'between:1,'.Survey::MAX_LIST_ITEMS],
 
@@ -387,6 +402,10 @@ class StoreSurveyRequest extends FormRequest
             return;
         }
 
+        if (Lookup::isLookup($question) && ($problem = $this->lookupProblem($question['lookup'], $earlierQuestions))) {
+            $validator->errors()->add("{$key}.lookup", "{$label}: {$problem}.");
+        }
+
         $source = (string) ($question['options_from'] ?? '');
 
         if ($source !== '' && ($earlierQuestions[$source]['type'] ?? null) !== 'multiple') {
@@ -396,6 +415,36 @@ class StoreSurveyRequest extends FormRequest
         if ($source === '' && ! empty($question['other_option']) && in_array(Survey::OTHER_VALUE, (array) ($question['options'] ?? []), true)) {
             $validator->errors()->add("{$key}.options", "{$label} sudah memakai opsi \"Lainnya (sebutkan)\" otomatis; hapus pilihan \"".Survey::OTHER_VALUE.'" dari daftar.');
         }
+    }
+
+    /**
+     * A reference list needs its columns; an API its address and keys; a parent must be an earlier question.
+     *
+     * @param  array<string, mixed>  $lookup
+     * @param  array<string, array<string, mixed>>  $earlierQuestions
+     */
+    private function lookupProblem(array $lookup, array $earlierQuestions): ?string
+    {
+        $parent = (string) ($lookup['depends_on'] ?? '');
+
+        if ($parent !== '' && ! isset($earlierQuestions[$parent])) {
+            return 'pilihan bertingkat harus bergantung pada pertanyaan sebelumnya';
+        }
+
+        if ($lookup['source'] === 'api') {
+            return trim((string) ($lookup['url'] ?? '')) === '' ? 'alamat API belum diisi' : null;
+        }
+
+        $list = ReferenceList::query()->where('slug', (string) ($lookup['reference'] ?? ''))->first();
+        $columns = $list?->columns ?? [];
+
+        return match (true) {
+            $list === null => 'data referensi belum dipilih atau sudah dihapus',
+            ! in_array($lookup['value_column'] ?? '', $columns, true) => 'kolom nilai (kode) belum dipilih',
+            ($lookup['label_column'] ?? '') !== '' && ! in_array($lookup['label_column'], $columns, true) => 'kolom label tidak ada di data referensi',
+            $parent !== '' && ! in_array($lookup['filter_column'] ?? '', $columns, true) => 'pilihan bertingkat membutuhkan kolom penyaring',
+            default => null,
+        };
     }
 
     /**
@@ -587,6 +636,7 @@ class StoreSurveyRequest extends FormRequest
                 'topline_label' => trim((string) ($settings['topline_label'] ?? '')),
                 'topline_label_position' => $settings['topline_label_position'] ?? 'left',
                 'form_code_position' => $settings['form_code_position'] ?? 'right',
+                'webhook_url' => trim((string) ($settings['webhook_url'] ?? '')),
             ],
             'header' => [
                 'align' => $this->validated('header.align') ?? 'center',
@@ -648,6 +698,19 @@ class StoreSurveyRequest extends FormRequest
             'other_option' => in_array($type, Survey::CHOICE_TYPES, true) && ($question['options_from'] ?? '') === '' && (bool) ($question['other_option'] ?? false),
             'other_label' => trim((string) ($question['other_label'] ?? '')),
             'mask' => $type === 'short' ? trim((string) ($question['mask'] ?? '')) : '',
+            'lookup' => Lookup::isLookup($question) ? array_filter([
+                'source' => $question['lookup']['source'],
+                'reference' => trim((string) ($question['lookup']['reference'] ?? '')),
+                'value_column' => trim((string) ($question['lookup']['value_column'] ?? '')),
+                'label_column' => trim((string) ($question['lookup']['label_column'] ?? '')),
+                'filter_column' => trim((string) ($question['lookup']['filter_column'] ?? '')),
+                'url' => trim((string) ($question['lookup']['url'] ?? '')),
+                'data_path' => trim((string) ($question['lookup']['data_path'] ?? '')),
+                'value_key' => trim((string) ($question['lookup']['value_key'] ?? '')),
+                'label_key' => trim((string) ($question['lookup']['label_key'] ?? '')),
+                'param' => trim((string) ($question['lookup']['param'] ?? '')),
+                'depends_on' => trim((string) ($question['lookup']['depends_on'] ?? '')),
+            ], fn (string $value): bool => $value !== '') : null,
             'logic' => $this->normalizeLogic($question['logic'] ?? null),
             'validation' => [
                 'rules' => collect($question['validation']['rules'] ?? [])

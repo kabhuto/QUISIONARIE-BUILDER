@@ -45,7 +45,7 @@
             const input = question.querySelector('input[type="file"]');
             return input?.files?.length ? input.files[0].name : '';
         }
-        const value = fieldValue(question.querySelector('[name^="answers["]:not([data-other-text])'));
+        const value = fieldValue(question.querySelector('[name^="answers["]:not([data-other-text]):not([data-lookup-search])'));
         return type === 'currency' ? value.replace(/\D/g, '') : value;
     }
 
@@ -401,6 +401,7 @@
         if (state.hidden || question.dataset.type === 'info') return;
         const id = question.dataset.questionId;
         if (question.dataset.optionsFrom) syncDynamicOptions(question, known);
+        if (question.dataset.lookupUrl) syncLookup(question, known);
         if (question.dataset.type === 'calc') {
             const value = evaluateFormula(question.dataset.formula ?? '', known);
             const decimals = Number(question.dataset.decimals || 0);
@@ -746,6 +747,66 @@
         }
     });
 
+
+
+    // ── Dropdowns filled from a reference list or an outside API ───────────
+
+    const lookups = new WeakMap();
+
+    function renderLookupOptions(question) {
+        const state = lookups.get(question);
+        const select = question.querySelector('select[data-options]');
+        const search = question.querySelector('[data-lookup-search]');
+        const filter = (search?.value ?? '').trim().toLowerCase();
+        const current = select.value;
+        const placeholder = select.querySelector('option[value=""]');
+        const options = (state?.options ?? []).filter(option => !filter || option.label.toLowerCase().includes(filter) || option.value.toLowerCase().includes(filter) || option.value === current);
+        select.replaceChildren(placeholder, ...options.slice(0, 500).map(option => new Option(option.label === option.value ? option.label : `${option.label} [${option.value}]`, option.value, false, option.value === current)));
+        // Keep an answer the list cannot confirm (e.g. the API is down), so nothing typed is lost.
+        if (current && !options.some(option => option.value === current) && state?.available === false) select.append(new Option(current, current, false, true));
+        if (search) search.hidden = (state?.options ?? []).length <= 15;
+    }
+
+    function syncLookup(question, known) {
+        const parentId = question.dataset.dependsOn;
+        const parent = parentId ? String([known[parentId] ?? ''].flat()[0] ?? '').trim() : null;
+        const key = parent ?? '';
+        const state = lookups.get(question) ?? {};
+        if (state.key === key) return;
+        lookups.set(question, Object.assign(state, { key, options: [], available: true }));
+        const status = question.querySelector('[data-lookup-status]');
+        if (parentId && !parent) {
+            renderLookupOptions(question);
+            question.querySelector('select[data-options]').value = '';
+            if (status) status.hidden = false;
+            return;
+        }
+        if (status) {
+            status.hidden = false;
+            status.textContent = 'Memuat pilihan…';
+        }
+        const url = new URL(question.dataset.lookupUrl, window.location.href);
+        if (parent !== null) url.searchParams.set('parent', parent);
+        fetch(url, { headers: { Accept: 'application/json' } })
+            .then(response => response.json())
+            .then(json => ({ options: Array.isArray(json.data) ? json.data : [], available: json.available !== false }))
+            .catch(() => ({ options: [], available: false }))
+            .then(result => {
+                if (lookups.get(question)?.key !== key) return;
+                Object.assign(state, result);
+                renderLookupOptions(question);
+                if (status) {
+                    status.textContent = !result.available ? 'Daftar pilihan tidak dapat dimuat saat ini.' : (result.options.length ? '' : 'Tidak ada pilihan untuk jawaban sebelumnya.');
+                    status.hidden = status.textContent === '';
+                }
+                applyLogic();
+            });
+    }
+
+    form.addEventListener('input', event => {
+        const search = event.target.closest('[data-lookup-search]');
+        if (search) renderLookupOptions(search.closest('.fill-question'));
+    });
 
     // ── Repeating blocks ───────────────────────────────────────────────────
 

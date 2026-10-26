@@ -27,16 +27,7 @@ class SurveyJson
             'format' => self::FORMAT,
             'version' => self::VERSION,
             'exported_at' => now()->toIso8601String(),
-            'survey' => [
-                'title' => $survey->title,
-                'form_code' => $survey->form_code,
-                'subtitle' => $survey->subtitle,
-                'activity' => $survey->activity,
-                'settings' => $survey->formSettings(),
-                'header' => ['align' => $survey->headerAlign(), 'items' => $survey->headerItems()],
-                'intro' => $survey->formIntro(),
-                'blocks' => $survey->blocks,
-            ],
+            'survey' => self::definitionData($survey),
             'validation_rules' => self::rulesSummary($survey),
             'responses' => $survey->responses()->oldest()->get()->map(fn (SurveyResponse $response): array => [
                 'id' => $response->id,
@@ -45,6 +36,42 @@ class SurveyJson
                 ...($response->flags ? ['flags' => $response->flags] : []),
             ])->all(),
             'assets' => ['logos' => self::logoAssets($survey)],
+        ];
+    }
+
+    /**
+     * The questionnaire itself, as the builder saves it.
+     *
+     * @return array<string, mixed>
+     */
+    public static function definitionData(Survey $survey): array
+    {
+        return [
+            'title' => $survey->title,
+            'form_code' => $survey->form_code,
+            'subtitle' => $survey->subtitle,
+            'activity' => $survey->activity,
+            'settings' => $survey->formSettings(),
+            'header' => ['align' => $survey->headerAlign(), 'items' => $survey->headerItems()],
+            'intro' => $survey->formIntro(),
+            'blocks' => $survey->blocks,
+        ];
+    }
+
+    /**
+     * One response for other systems (API and webhooks).
+     *
+     * @return array<string, mixed>
+     */
+    public static function responseData(SurveyResponse $response): array
+    {
+        return [
+            'id' => $response->id,
+            'submitted_at' => $response->created_at?->toIso8601String(),
+            'source' => $response->source ?? 'form',
+            'assignment_id' => $response->assignment?->id,
+            'answers' => $response->answers ?? (object) [],
+            'flags' => $response->flags,
         ];
     }
 
@@ -87,7 +114,12 @@ class SurveyJson
                 'list' => 'daftar nama/isian, maksimal '.($question['list']['max'] ?? 10),
                 'calc' => 'dihitung otomatis: '.Piping::text((string) ($question['formula'] ?? ''), $numbers),
                 'code' => $question['code_length'] > 0 ? "tepat {$question['code_length']} digit angka" : 'kode maksimal 50 karakter',
-                'single', 'dropdown' => ($question['options_from'] ?? '') !== ''
+                'dropdown' => Lookup::isLookup($question)
+                    ? 'kode dari '.(($question['lookup']['source'] ?? '') === 'api' ? 'API '.($question['lookup']['url'] ?? '') : 'data referensi "'.($question['lookup']['reference'] ?? '').'" kolom '.($question['lookup']['value_column'] ?? '')).(($question['lookup']['depends_on'] ?? '') !== '' ? ', disaring menurut jawaban '.($numbers[$question['lookup']['depends_on']] ?? '') : '')
+                    : (($question['options_from'] ?? '') !== ''
+                        ? 'salah satu jawaban pertanyaan '.($numbers[$question['options_from']] ?? '')
+                        : 'salah satu dari: '.implode(' | ', [...$question['options'], ...(Survey::hasOtherOption($question) ? [Survey::OTHER_VALUE.' (sebutkan)'] : [])])),
+                'single' => ($question['options_from'] ?? '') !== ''
                     ? 'salah satu jawaban pertanyaan '.($numbers[$question['options_from']] ?? '')
                     : 'salah satu dari: '.implode(' | ', [...$question['options'], ...(Survey::hasOtherOption($question) ? [Survey::OTHER_VALUE.' (sebutkan)'] : [])]),
                 'multiple' => ($question['options_from'] ?? '') !== ''

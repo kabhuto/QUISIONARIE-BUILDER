@@ -15,6 +15,8 @@
         </a>
         <nav class="topbar-context" aria-label="Navigasi utama">
             <a href="{{ route('surveys.index') }}" @class(['nav-link', 'is-active' => request()->routeIs('surveys.index')])>DASHBOARD</a>
+            <a href="{{ route('references.index') }}" @class(['nav-link', 'is-active' => request()->routeIs('references.*')])>DATA REFERENSI</a>
+            <a href="{{ route('api-access.index') }}" @class(['nav-link', 'is-active' => request()->routeIs('api-access.*')])>AKSES API</a>
         </nav>
         <div class="topbar-actions">
             @yield('actions')

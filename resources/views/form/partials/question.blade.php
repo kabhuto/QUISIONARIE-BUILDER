@@ -56,6 +56,7 @@
          @if ($type === 'calc') data-formula="{{ $question['formula'] }}" data-format="{{ $question['format'] }}" data-decimals="{{ $question['decimals'] }}" @endif
          @if (($question['options_from'] ?? '') !== '') data-options-from="{{ $question['options_from'] }}" @endif
          @if (($question['mask'] ?? '') !== '') data-mask="{{ $question['mask'] }}" @endif
+         @if (\App\Support\Lookup::isLookup($question)) data-lookup-url="{{ route('form.lookup', [$survey, $question['id']]) }}" @if (($question['lookup']['depends_on'] ?? '') !== '') data-depends-on="{{ $question['lookup']['depends_on'] }}" @endif @endif
          @if ($maxLength) data-max-length="{{ $maxLength }}" @endif>
 
         @if ($type === 'region')
@@ -313,8 +314,15 @@
                             @endif
                             @break
                         @case('dropdown')
+                            @if (\App\Support\Lookup::isLookup($question))
+                                {{-- Options are fetched from the reference list or API; a search box appears for long lists. --}}
+                                <input class="fill-input cawi-lookup-search" type="search" placeholder="Cari…" aria-label="Cari pilihan" data-lookup-search hidden>
+                            @endif
                             <select class="fill-input" id="{{ $inputId }}" name="{{ $name }}" data-options>
                                 <option value="">{{ $placeholder ?: 'Pilih jawaban…' }}</option>
+                                @if (\App\Support\Lookup::isLookup($question) && is_string($old) && $old !== '')
+                                    <option value="{{ $old }}" selected>{{ $old }}</option>
+                                @endif
                                 @foreach ($choiceOptions as $option)
                                     <option value="{{ $option }}" @selected($old === $option)>{{ $option }}</option>
                                 @endforeach
@@ -324,6 +332,9 @@
                             </select>
                             @if (($question['options_from'] ?? '') !== '')
                                 <p class="fill-hint" data-options-empty @if ($choiceOptions !== []) hidden @endif>Pilihan muncul setelah pertanyaan {{ $numbers[$question['options_from']] ?? '' }} dijawab.</p>
+                            @endif
+                            @if (\App\Support\Lookup::isLookup($question))
+                                <p class="fill-hint" data-lookup-status>@if (($question['lookup']['depends_on'] ?? '') !== '')Pilihan muncul setelah pertanyaan {{ $numbers[$question['lookup']['depends_on']] ?? '' }} dijawab.@endif</p>
                             @endif
                             @if ($hasOther)
                                 <input class="fill-input cawi-other" type="text" name="{{ $otherName }}" maxlength="255" value="{{ $otherOld }}" placeholder="Sebutkan…" aria-label="Sebutkan jawaban lainnya" data-other-text @unless ($old === \App\Models\Survey::OTHER_VALUE) hidden @endunless>

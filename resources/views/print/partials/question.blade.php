@@ -150,7 +150,14 @@
         </td>
         <td @class(['sheet-answer', 'has-wide-code' => $wideCode]) @if ($wideCode) colspan="2" @endif>
             @if ($wideCode)<div class="sheet-answer-row"><div class="sheet-answer-main">@endif
-            @if (in_array($type, \App\Models\Survey::CHOICE_TYPES, true))
+            @if (\App\Support\Lookup::isLookup($question))
+                @if ($hasAnswer)
+                    <span class="sheet-value">{{ \App\Models\SurveyResponse::displayValue($question, $answer, '', (string) ($answers[$question['id'].\App\Models\Survey::LABEL_SUFFIX] ?? '')) }}</span>
+                @else
+                    <span class="sheet-line"></span>
+                    <small class="sheet-note">Kode dari {{ ($question['lookup']['source'] ?? '') === 'api' ? 'daftar API' : 'data referensi' }}{{ ($question['lookup']['depends_on'] ?? '') !== '' ? ' menurut jawaban '.($numbers[$question['lookup']['depends_on']] ?? '') : '' }}</small>
+                @endif
+            @elseif (in_array($type, \App\Models\Survey::CHOICE_TYPES, true))
                 @if (($question['options_from'] ?? '') !== '' && ! $response)
                     <small class="sheet-note">Pilihan dari jawaban pertanyaan {{ $numbers[$question['options_from']] ?? '' }}</small>
                     <span class="sheet-line"></span>

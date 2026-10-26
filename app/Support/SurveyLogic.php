@@ -72,6 +72,7 @@ class SurveyLogic
             'other_option' => false,
             'other_label' => '',
             'mask' => '',
+            'lookup' => null,
         ];
         if (($question['type'] ?? null) === 'calc') {
             $question += ['formula' => '', 'format' => 'number', 'decimals' => 0];

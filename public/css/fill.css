@@ -258,3 +258,5 @@ textarea.fill-input{resize:vertical;min-height:84px}
 .cawi-list li{padding-left:4px}
 .cawi-list li input{width:calc(100% - 36px);max-width:420px}
 .cawi-list li .link-button{margin-left:6px;font-size:18px;line-height:1;vertical-align:middle}
+.fill-assignment{margin:0 0 14px;padding:10px 14px;border-radius:8px;background:color-mix(in srgb,var(--accent) 10%,#fff);border:1px solid color-mix(in srgb,var(--accent) 30%,#fff);font-size:14px}
+.cawi-lookup-search{margin-bottom:6px;max-width:420px}
