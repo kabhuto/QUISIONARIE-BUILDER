@@ -10,7 +10,8 @@ use InvalidArgumentException;
  * "{{q-makan}} + {{q-nonmakan}}", "round({{q-luas}} / 10000, 2)" or "years({{q-lahir}})".
  *
  * Numbers, "texts" (e.g. dates), answer tags, + - * / %, comparisons (giving 1 or 0), brackets and the functions below.
- * An unanswered tag counts as 0 in arithmetic; a formula whose tags are all unanswered has no result.
+ * An unanswered tag counts as 0 in arithmetic, a list (e.g. a repeating block's rows) as its total;
+ * a formula whose tags are all unanswered has no result.
  * Mirrors the evaluator in public/js/fill.js.
  */
 class Formula
@@ -351,11 +352,12 @@ class Formula
         }
 
         $values = array_map(fn (array $argument): mixed => self::run($argument, $answers, $today), $arguments);
-        $numbers = fn (): array => array_map(self::number(...), $values);
+        // Lists (the rows of a repeating block) are spread out, so sum({{q-pendapatan}}) adds every row.
+        $numbers = fn (): array => array_map(self::number(...), array_merge(...array_map(fn ($value): array => is_array($value) ? array_values($value) : [$value], $values)));
 
         return match ($name) {
             'sum' => array_sum($numbers()),
-            'avg' => array_sum($numbers()) / count($values),
+            'avg' => array_sum($numbers()) / max(1, count($numbers())),
             'min' => min($numbers()),
             'max' => max($numbers()),
             'round' => round(self::number($values[0]), (int) self::number($values[1] ?? 0)),
@@ -399,7 +401,11 @@ class Formula
         if (is_float($value) || is_int($value)) {
             return (float) $value;
         }
-        if (is_array($value) || $value === null) {
+        if (is_array($value)) {
+            // A list in arithmetic counts as its total, e.g. the rows of a repeating block.
+            return array_sum(array_map(self::number(...), array_filter($value, fn ($item): bool => ! is_array($item))));
+        }
+        if ($value === null) {
             return 0.0;
         }
 

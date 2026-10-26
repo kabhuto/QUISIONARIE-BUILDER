@@ -102,6 +102,10 @@ class StoreSurveyRequest extends FormRequest
             'blocks.*.title' => ['required', 'string', 'max:160'],
             'blocks.*.layout' => ['sometimes', Rule::in(['full', 'half'])],
             'blocks.*.orientation' => ['sometimes', 'nullable', Rule::in(['portrait', 'landscape'])],
+            'blocks.*.repeat' => ['nullable', 'array'],
+            'blocks.*.repeat.source' => ['nullable', 'string', 'max:80', self::ID_PATTERN],
+            'blocks.*.repeat.max' => ['sometimes', 'integer', 'between:1,'.Survey::MAX_ROSTER_ROWS],
+            'blocks.*.repeat.print_rows' => ['sometimes', 'integer', 'between:1,30'],
             ...$conditionRules('blocks.*'),
             'blocks.*.questions' => ['present', 'array'],
             "{$question}.id" => ['required', 'string', 'max:80', self::ID_PATTERN, 'distinct'],
@@ -135,6 +139,8 @@ class StoreSurveyRequest extends FormRequest
             "{$question}.file" => ['nullable', 'array'],
             "{$question}.file.accept" => ['sometimes', Rule::in(array_keys(Survey::FILE_KINDS))],
             "{$question}.file.max_mb" => ['sometimes', 'integer', 'between:1,'.Survey::MAX_FILE_MB],
+            "{$question}.list" => ['nullable', 'array'],
+            "{$question}.list.max" => ['sometimes', 'integer', 'between:1,'.Survey::MAX_LIST_ITEMS],
 
             "{$question}.region" => ['nullable', 'array'],
             "{$question}.region.fields" => ['sometimes', 'array'],
@@ -275,21 +281,52 @@ class StoreSurveyRequest extends FormRequest
     private function validateConditions(Validator $validator, array $blocks): void
     {
         $numbers = Survey::numberQuestions($blocks, $this->input('settings.numbering'));
+        // Rules may use earlier questions outside repeating blocks, plus earlier ones in their own
+        // repeating block (answered per row). Formulas may also total another repeating block's rows.
         $earlierQuestions = [];
+        $earlierAnswerable = [];
+        $formulaOnly = [];
 
         foreach ($blocks as $blockIndex => $block) {
-            $this->checkCondition($validator, $block['condition'] ?? null, $earlierQuestions, "blocks.{$blockIndex}.condition", 'Blok '.Survey::roman($blockIndex + 1));
+            $blockName = 'Blok '.Survey::roman($blockIndex + 1);
+            $this->checkCondition($validator, $block['condition'] ?? null, $earlierQuestions, "blocks.{$blockIndex}.condition", $blockName);
+            $source = SurveyLogic::repeatSource($block);
+            $rowScope = [];
+
+            if ($source !== null && ! in_array($earlierAnswerable[$source]['type'] ?? null, Survey::ROSTER_SOURCE_TYPES, true)) {
+                $validator->errors()->add("blocks.{$blockIndex}.repeat", "{$blockName} hanya dapat diulang per jawaban pertanyaan Angka, Pilihan lebih dari satu, atau Daftar nama sebelumnya (di luar blok berulang).");
+            }
 
             foreach ($block['questions'] as $questionIndex => $question) {
                 $subject = isset($numbers[$question['id']]) ? "pertanyaan {$numbers[$question['id']]}" : 'keterangan';
                 $key = "blocks.{$blockIndex}.questions.{$questionIndex}";
-                $this->checkLogic($validator, $question, $earlierQuestions, "{$key}.logic", $subject);
-                $this->checkDynamicAnswers($validator, $question, $earlierQuestions, $key, $subject);
-                $self = in_array($question['type'], Survey::NON_LOGIC_TYPES, true) ? [] : [$question['id'] => $question];
-                $this->checkValidationRules($validator, $question, $earlierQuestions + $self, "{$key}.validation", $subject);
 
+                if ($source !== null && ! in_array($question['type'], Survey::ROSTER_TYPES, true)) {
+                    $validator->errors()->add("{$key}.type", ucfirst($subject).': jenis "'.Survey::QUESTION_TYPES[$question['type']].'" tidak dapat dipakai di blok berulang.');
+                }
+
+                $available = $earlierQuestions + $rowScope;
+                $this->checkLogic($validator, $question, $available, "{$key}.logic", $subject);
+                $this->checkDynamicAnswers($validator, $question, $available, $key, $subject, array_keys($available + $formulaOnly));
+                $self = in_array($question['type'], Survey::NON_LOGIC_TYPES, true) ? [] : [$question['id'] => $question];
+                $this->checkValidationRules($validator, $question, $available + $self, "{$key}.validation", $subject);
+
+                if ($question['type'] === 'info') {
+                    continue;
+                }
+                if ($source !== null) {
+                    if (! in_array($question['type'], Survey::NON_LOGIC_TYPES, true)) {
+                        $rowScope[$question['id']] = $question;
+                    }
+                    $formulaOnly[$question['id']] = $question;
+
+                    continue;
+                }
+                $earlierAnswerable[$question['id']] = $question;
                 if (! in_array($question['type'], Survey::NON_LOGIC_TYPES, true)) {
                     $earlierQuestions[$question['id']] = $question;
+                } elseif ($question['type'] === 'list') {
+                    $formulaOnly[$question['id']] = $question;
                 }
             }
         }
@@ -329,13 +366,14 @@ class StoreSurveyRequest extends FormRequest
      *
      * @param  array<string, mixed>  $question
      * @param  array<string, array<string, mixed>>  $earlierQuestions
+     * @param  list<string>  $formulaIds
      */
-    private function checkDynamicAnswers(Validator $validator, array $question, array $earlierQuestions, string $key, string $subject): void
+    private function checkDynamicAnswers(Validator $validator, array $question, array $earlierQuestions, string $key, string $subject, array $formulaIds): void
     {
         $earlierIds = array_keys($earlierQuestions);
         $label = ucfirst($subject);
 
-        if ($question['type'] === 'calc' && ($problem = Formula::problem((string) ($question['formula'] ?? ''), $earlierIds))) {
+        if ($question['type'] === 'calc' && ($problem = Formula::problem((string) ($question['formula'] ?? ''), $formulaIds))) {
             $validator->errors()->add("{$key}.formula", "Rumus {$subject} {$problem}.");
         }
 
@@ -572,6 +610,11 @@ class StoreSurveyRequest extends FormRequest
                 'layout' => $block['layout'] ?? 'full',
                 // Empty follows the form's orientation; otherwise this block starts its own pages.
                 'orientation' => $block['orientation'] ?? '',
+                'repeat' => SurveyLogic::repeatSource($block) === null ? null : [
+                    'source' => $block['repeat']['source'],
+                    'max' => (int) ($block['repeat']['max'] ?? 20),
+                    'print_rows' => (int) ($block['repeat']['print_rows'] ?? 3),
+                ],
                 'condition' => $this->normalizeCondition($block['condition'] ?? null),
                 'questions' => collect($block['questions'])->map(fn (array $question): array => $this->normalizeQuestion($question))->values()->all(),
             ])->values()->all(),
@@ -643,6 +686,10 @@ class StoreSurveyRequest extends FormRequest
             $normalized['formula'] = trim((string) ($question['formula'] ?? ''));
             $normalized['format'] = $question['format'] ?? 'number';
             $normalized['decimals'] = (int) ($question['decimals'] ?? 0);
+        }
+
+        if ($type === 'list') {
+            $normalized['list'] = ['max' => (int) ($question['list']['max'] ?? 10)];
         }
 
         if ($type === 'file') {

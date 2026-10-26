@@ -1,12 +1,17 @@
 @php
     $type = $question['type'];
     $number = $numbers[$question['id']] ?? null;
-    $name = 'answers['.$question['id'].']';
-    $inputId = 'answer-'.$question['id'];
+    // In a repeating block every row has its own fields: answers[id][row].
+    $row ??= null;
+    $rowLabel ??= '';
+    $rowSuffix = $row === null ? '' : '['.$row.']';
+    $rowKey = $row === null ? '' : '.'.$row;
+    $name = 'answers['.$question['id'].']'.$rowSuffix;
+    $inputId = 'answer-'.$question['id'].($row === null ? '' : '-'.$row);
     $prefill = ($question['prefill'] ?? '') !== '' ? $question['prefill'] : null;
     // Old input wins after a failed submission; otherwise start from the pre-filled value.
-    $old = old('answers.'.$question['id'], $errors->any() ? null : $prefill);
-    $errorKey = 'answers.'.$question['id'];
+    $old = old('answers.'.$question['id'].$rowKey, $errors->any() ? null : $prefill);
+    $errorKey = 'answers.'.$question['id'].$rowKey;
     $error = $errors->first($errorKey) ?: $errors->first($errorKey.'.*') ?: $errors->first($errorKey.'.*.*');
     $logic = $question['logic'] ?? null;
     $hasRules = ($question['validation']['rules'] ?? []) !== [] || ($question['validation']['checks'] ?? []) !== [];
@@ -14,12 +19,15 @@
     $maxLength = $question['max_length'] ?? null;
     $width = 'w-'.str_replace('/', '-', $question['width'] ?? 'full');
     $help = ($question['description'] ?? '') !== '' ? '<p class="fill-hint">'.\App\Support\Piping::html($question['description']).'</p>' : '';
-    $label = \App\Support\Piping::html($question['label']);
+    // The row's name or number stands in for {{@baris}} in a repeating block.
+    $rowPipe = fn (string $html): \Illuminate\Support\HtmlString => new \Illuminate\Support\HtmlString(str_replace(\App\Models\Survey::ROW_TOKEN, '<span class="fill-pipe is-row" data-row-label>'.e($rowLabel !== '' ? $rowLabel : '…').'</span>', $html));
+    $label = $rowPipe((string) \App\Support\Piping::html($question['label']));
+    $help = $help !== '' ? (string) $rowPipe($help) : '';
     // Options may come from the answers chosen on an earlier question; JavaScript keeps them in step.
     $choiceOptions = \App\Models\Survey::optionsFor($question, (array) old('answers', []));
     $hasOther = \App\Models\Survey::hasOtherOption($question);
-    $otherName = 'answers['.$question['id'].\App\Models\Survey::OTHER_SUFFIX.']';
-    $otherOld = old('answers.'.$question['id'].\App\Models\Survey::OTHER_SUFFIX);
+    $otherName = 'answers['.$question['id'].\App\Models\Survey::OTHER_SUFFIX.']'.$rowSuffix;
+    $otherOld = old('answers.'.$question['id'].\App\Models\Survey::OTHER_SUFFIX.$rowKey);
     $otherLabel = ($question['other_label'] ?? '') !== '' ? $question['other_label'] : \App\Models\Survey::DEFAULT_OTHER_LABEL;
     $helpAbove = ($question['help_position'] ?? 'below') === 'above';
     $isBranch = $question['hidden'] && in_array('show', $logic['actions'] ?? [], true);
@@ -34,12 +42,12 @@
          @if ($logic) data-logic="{{ json_encode($logic) }}" @endif>
         <strong>ⓘ {{ $label }}</strong>
         @if ($question['description'] !== '')
-            <p>{!! nl2br(\App\Support\Piping::html($question['description'])) !!}</p>
+            <p>{!! nl2br((string) $rowPipe((string) \App\Support\Piping::html($question['description']))) !!}</p>
         @endif
     </div>
 @else
     <div @class(['fill-question', 'cawi-question', 'is-'.$type, $width, 'is-narrow' => $width !== 'w-full', 'is-branch' => $isBranch, 'is-disabled' => $question['disabled'], 'has-error' => $error])
-         data-question-id="{{ $question['id'] }}" data-type="{{ $type }}"
+         data-question-id="{{ $question['id'] }}" data-type="{{ $type }}" @if ($row !== null) data-row="{{ $row }}" @endif
          @if ($question['required']) data-required data-static-required @endif
          @if ($question['hidden']) data-static-hidden hidden @endif
          @if ($question['disabled']) data-static-disabled @endif
@@ -180,6 +188,21 @@
                             @break
                         @case('date')
                             <input class="fill-input cawi-short" id="{{ $inputId }}" name="{{ $name }}" type="date" value="{{ $old }}">
+                            @break
+                        @case('list')
+                            @php
+                                $items = array_values(array_filter((array) $old, fn ($item): bool => is_string($item) && trim($item) !== '')) ?: [''];
+                                $listMax = $question['list']['max'] ?? 10;
+                            @endphp
+                            <div class="cawi-list" data-list data-max="{{ $listMax }}">
+                                <ol data-list-items>
+                                    @foreach ($items as $itemIndex => $item)
+                                        <li><input class="fill-input" type="text" name="{{ $name }}[{{ $itemIndex }}]" maxlength="255" value="{{ $item }}" placeholder="{{ $placeholder !== '' ? $placeholder : 'Tulis nama' }}" aria-label="Nama ke-{{ $itemIndex + 1 }}"><button class="link-button" type="button" data-list-remove aria-label="Hapus nama">×</button></li>
+                                    @endforeach
+                                </ol>
+                                <button class="cawi-add-row" type="button" data-list-add>+ Tambah nama</button>
+                                <p class="fill-hint">Maksimal {{ $listMax }} nama.</p>
+                            </div>
                             @break
                         @case('time')
                             <input class="fill-input cawi-short" id="{{ $inputId }}" name="{{ $name }}" type="time" value="{{ $old }}">
@@ -327,7 +350,7 @@
             <div class="cawi-check is-{{ $check['level'] }}" data-check-id="{{ $check['id'] }}" role="alert" hidden>
                 <p><b>{{ $check['level'] === 'warning' ? 'Peringatan' : 'Galat' }}:</b> {{ $check['message'] }}</p>
                 @if ($check['level'] === 'warning')
-                    <label><input type="checkbox" name="confirmations[{{ $check['id'] }}]" value="1" @checked(old('confirmations.'.$check['id']))> Ya, jawaban ini sudah benar</label>
+                    <label><input type="checkbox" name="confirmations[{{ $check['id'] }}]{{ $rowSuffix }}" value="1" @checked(old('confirmations.'.$check['id'].$rowKey))> Ya, jawaban ini sudah benar</label>
                 @endif
             </div>
         @endforeach

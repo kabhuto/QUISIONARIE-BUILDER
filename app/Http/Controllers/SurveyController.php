@@ -117,6 +117,10 @@ class SurveyController extends Controller
                 'maxFileMb' => Survey::MAX_FILE_MB,
                 'formulaFormats' => Formula::FORMATS,
                 'maxMaskLength' => Survey::MAX_MASK_LENGTH,
+                'rosterSourceTypes' => Survey::ROSTER_SOURCE_TYPES,
+                'rosterTypes' => Survey::ROSTER_TYPES,
+                'maxRosterRows' => Survey::MAX_ROSTER_ROWS,
+                'maxListItems' => Survey::MAX_LIST_ITEMS,
             ],
             'headerConfig' => [
                 'items' => $survey->headerItems(),

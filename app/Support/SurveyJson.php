@@ -64,6 +64,8 @@ class SurveyJson
                 $question['disabled'] ? 'tidak dapat diubah responden' : null,
                 $question['prefill'] !== '' ? 'nilai awal: '.$question['prefill'] : null,
                 $question['max_length'] ? "maksimal {$question['max_length']} karakter" : null,
+                ($question['mask'] ?? '') !== '' ? "format {$question['mask']}" : null,
+                ! empty($question['in_roster']) ? 'diisi per rincian (daftar jawaban per baris)' : null,
             ]));
 
             $rules[] = match ($question['type']) {
@@ -79,9 +81,18 @@ class SurveyJson
                 'rating', 'scale', 'slider' => "bilangan bulat {$question['range']['min']}–{$question['range']['max']}".($question['range']['step'] > 1 ? " kelipatan {$question['range']['step']}" : ''),
                 'matrix' => 'per baris ('.implode(' | ', $question['matrix']['rows']).') salah satu dari: '.implode(' | ', $question['matrix']['columns']),
                 'signature' => 'gambar tanda tangan PNG (data URL)',
+                'time' => 'jam (JJ:MM)',
+                'location' => 'koordinat "lintang, bujur" dalam derajat desimal',
+                'file' => 'berkas '.implode('/', Survey::fileExtensions($question)).' maksimal '.($question['file']['max_mb'] ?? 5).' MB',
+                'list' => 'daftar nama/isian, maksimal '.($question['list']['max'] ?? 10),
+                'calc' => 'dihitung otomatis: '.Piping::text((string) ($question['formula'] ?? ''), $numbers),
                 'code' => $question['code_length'] > 0 ? "tepat {$question['code_length']} digit angka" : 'kode maksimal 50 karakter',
-                'single', 'dropdown' => 'salah satu dari: '.implode(' | ', $question['options']),
-                'multiple' => 'satu atau lebih dari: '.implode(' | ', $question['options']),
+                'single', 'dropdown' => ($question['options_from'] ?? '') !== ''
+                    ? 'salah satu jawaban pertanyaan '.($numbers[$question['options_from']] ?? '')
+                    : 'salah satu dari: '.implode(' | ', [...$question['options'], ...(Survey::hasOtherOption($question) ? [Survey::OTHER_VALUE.' (sebutkan)'] : [])]),
+                'multiple' => ($question['options_from'] ?? '') !== ''
+                    ? 'satu atau lebih jawaban pertanyaan '.($numbers[$question['options_from']] ?? '')
+                    : 'satu atau lebih dari: '.implode(' | ', [...$question['options'], ...(Survey::hasOtherOption($question) ? [Survey::OTHER_VALUE.' (sebutkan)'] : [])]),
                 'region' => 'isian wilayah: '.implode(', ', array_map(
                     fn (array $field): string => $field['label'].($field['mode'] === 'fixed' ? ' = '.Survey::fixedRegionValue($field) : ''),
                     Survey::regionFields($question),

@@ -36,6 +36,7 @@ class Survey extends Model
         'region' => 'Identitas wilayah',
         'table' => 'Tabel / listing',
         'signature' => 'Tanda tangan',
+        'list' => 'Daftar nama/isian',
         'calc' => 'Hitungan (rumus)',
         'location' => 'Lokasi (GPS)',
         'file' => 'Unggah berkas/foto',
@@ -64,6 +65,26 @@ class Survey extends Model
     public const MAX_FILE_MB = 10;
 
     /**
+     * A block can repeat once per answer of an earlier question (FormGear's nested input / roster):
+     * per number given, per option chosen, or per name in a list.
+     */
+    public const ROSTER_SOURCE_TYPES = ['number', 'multiple', 'list'];
+
+    /**
+     * Question types that can sit inside a repeating block.
+     */
+    public const ROSTER_TYPES = ['short', 'long', 'single', 'multiple', 'dropdown', 'number', 'currency', 'date', 'time', 'email', 'phone', 'url', 'code', 'checkbox', 'rating', 'scale', 'slider', 'calc', 'location', 'info'];
+
+    public const MAX_ROSTER_ROWS = 50;
+
+    /**
+     * Stands for the current row's name or number in the texts of a repeating block.
+     */
+    public const ROW_TOKEN = '{{@baris}}';
+
+    public const MAX_LIST_ITEMS = 50;
+
+    /**
      * Input mask characters: 9 a digit, a a letter, * a letter or digit; anything else is typed as is.
      */
     public const MAX_MASK_LENGTH = 40;
@@ -80,7 +101,7 @@ class Survey extends Model
     /**
      * Types that hold structured answers, or none at all; they cannot drive display logic.
      */
-    public const NON_LOGIC_TYPES = ['region', 'table', 'matrix', 'info'];
+    public const NON_LOGIC_TYPES = ['region', 'table', 'matrix', 'list', 'info'];
 
     /**
      * Types without code boxes on the printed sheet.
@@ -461,6 +482,8 @@ class Survey extends Model
         $questions = [];
 
         foreach ($this->blocks ?? [] as $blockIndex => $block) {
+            $inRoster = SurveyLogic::repeatSource($block) !== null;
+
             foreach ($block['questions'] as $question) {
                 if ($question['type'] === 'info') {
                     continue;
@@ -469,6 +492,8 @@ class Survey extends Model
                 $questions[] = $question + [
                     'number' => $numbers[$question['id']],
                     'block_index' => $blockIndex,
+                    // Questions of a repeating block hold one answer per row.
+                    'in_roster' => $inRoster,
                     // The label with answer tags shown as question numbers, for admin pages and messages.
                     'text' => Piping::text($question['label'], $numbers),
                 ];

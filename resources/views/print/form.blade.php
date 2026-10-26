@@ -79,6 +79,9 @@
                 @endif
                 <section @class(['sheet-block', 'is-half' => ($block['layout'] ?? 'full') === 'half'])>
                     <div class="sheet-block-title">BLOK {{ \App\Models\Survey::roman($blockIndex + 1) }}. {{ $block['title'] }}</div>
+                    @if (\App\Support\SurveyLogic::repeatSource($block) !== null)
+                        @include('print.partials.roster')
+                    @else
                     <table class="sheet-table">
                         @php
                             $isHalf = ($block['layout'] ?? 'full') === 'half';
@@ -96,6 +99,7 @@
                             @endforeach
                         </tbody>
                     </table>
+                    @endif
                 </section>
             @endforeach
         </div>

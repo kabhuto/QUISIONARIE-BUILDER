@@ -15,9 +15,16 @@ use Illuminate\Validation\Validator;
 class SubmitSurveyResponseRequest extends FormRequest
 {
     /**
-     * @var array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>, computed: array<string, string>}|null
+     * The form's logic applied to the submitted answers; see SurveyLogic::analyse().
+     *
+     * @var array<string, mixed>|null
      */
     private ?array $analysis = null;
+
+    /**
+     * @var list<array<string, mixed>>|null
+     */
+    private ?array $editableFields = null;
 
     /**
      * Paths of the files stored by answers(), so a request stores each upload once.
@@ -29,7 +36,7 @@ class SubmitSurveyResponseRequest extends FormRequest
     /**
      * Consistency warnings the respondent confirmed, stored with the response.
      *
-     * @var list<array<string, string>>
+     * @var list<array<string, mixed>>
      */
     private array $confirmedWarnings = [];
 
@@ -47,15 +54,16 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
-     * Rupiah answers arrive formatted ("1.500.000"); keep only their digits.
+     * Rupiah answers arrive formatted ("1.500.000"); keep only their digits, in repeating blocks too.
      */
     protected function prepareForValidation(): void
     {
         $answers = (array) $this->input('answers', []);
+        $digits = fn ($value) => is_string($value) ? preg_replace('/\D/', '', $value) : $value;
 
         foreach ($this->survey()->questions() as $question) {
-            if ($question['type'] === 'currency' && is_string($answers[$question['id']] ?? null)) {
-                $answers[$question['id']] = preg_replace('/\D/', '', $answers[$question['id']]);
+            if ($question['type'] === 'currency' && isset($answers[$question['id']])) {
+                $answers[$question['id']] = is_array($answers[$question['id']]) ? array_map($digits, $answers[$question['id']]) : $digits($answers[$question['id']]);
             }
         }
 
@@ -63,17 +71,7 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
-     * Hidden, disabled and required state of every question after applying the form's logic.
-     *
-     * @return array<string, array{hidden: bool, disabled: bool, required: bool}>
-     */
-    private function states(): array
-    {
-        return $this->analysis()['states'];
-    }
-
-    /**
-     * @return array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>, computed: array<string, string>}
+     * @return array<string, mixed>
      */
     private function analysis(): array
     {
@@ -91,25 +89,52 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
-     * Questions the respondent can see and change; only these are validated and taken from the request.
+     * Fields the respondent can see and change (one per question, or per row of a repeating block);
+     * only these are validated and taken from the request.
      *
-     * @return list<array<string, mixed>>
+     * @return list<array{question: array<string, mixed>, key: string, row: int|null, state: array{hidden: bool, disabled: bool, required: bool}, known: array<string, mixed>}>
      */
-    private function editableQuestions(): array
+    private function editableFields(): array
     {
-        return array_values(array_filter(
-            $this->survey()->questions(),
-            fn (array $question): bool => ! ($this->states()[$question['id']]['hidden'] ?? true) && ! $this->states()[$question['id']]['disabled']
-                && ! in_array($question['type'], Survey::COMPUTED_TYPES, true),
-        ));
+        if ($this->editableFields !== null) {
+            return $this->editableFields;
+        }
+
+        $questions = collect($this->survey()->questions())->keyBy('id');
+        $fields = [];
+
+        foreach ($this->analysis()['fields'] as $field) {
+            $question = $questions[$field['question']['id']] ?? null;
+
+            if ($question && ! $field['state']['hidden'] && ! $field['state']['disabled'] && ! in_array($question['type'], Survey::COMPUTED_TYPES, true)) {
+                $fields[] = ['question' => $question] + $field;
+            }
+        }
+
+        return $this->editableFields = $fields;
     }
 
     /**
-     * @param  array<string, mixed>  $question
+     * Where a field's "Lainnya" text is posted: next to the question, per row in a repeating block.
+     *
+     * @param  array<string, mixed>  $field
      */
-    private function isRequired(array $question): bool
+    private function otherKey(array $field): string
     {
-        return $this->states()[$question['id']]['required'] ?? false;
+        return $field['question']['id'].Survey::OTHER_SUFFIX.($field['row'] === null ? '' : '.'.$field['row']);
+    }
+
+    /**
+     * The options a field's choice question offers for the answers given so far.
+     *
+     * @param  array<string, mixed>  $field
+     * @return list<string>
+     */
+    private function optionsOf(array $field): array
+    {
+        $options = Survey::optionsFor($field['question'], $field['known']);
+
+        return Survey::hasOtherOption($field['question']) ? [...$options, Survey::OTHER_VALUE] : $options;
     }
 
     /**
@@ -121,16 +146,17 @@ class SubmitSurveyResponseRequest extends FormRequest
     {
         $rules = ['answers' => ['nullable', 'array']];
 
-        foreach ($this->editableQuestions() as $question) {
-            $key = 'answers.'.$question['id'];
-            $presence = $this->isRequired($question) ? 'required' : 'nullable';
+        foreach ($this->editableFields() as $field) {
+            $question = $field['question'];
+            $key = 'answers.'.$field['key'];
+            $presence = $field['state']['required'] ? 'required' : 'nullable';
 
             if ($question['type'] === 'region') {
                 $rules[$key] = ['nullable', 'array'];
 
-                foreach (Survey::regionFields($question) as $field) {
-                    if ($field['mode'] === 'input') {
-                        $rules["{$key}.{$field['key']}"] = $field['key'] === 'klasifikasi'
+                foreach (Survey::regionFields($question) as $regionField) {
+                    if ($regionField['mode'] === 'input') {
+                        $rules["{$key}.{$regionField['key']}"] = $regionField['key'] === 'klasifikasi'
                             ? [$presence, 'string', Rule::in(Survey::REGION_CLASSIFICATIONS)]
                             : [$presence, 'string', 'max:255'];
                     }
@@ -164,6 +190,13 @@ class SubmitSurveyResponseRequest extends FormRequest
                 continue;
             }
 
+            if ($question['type'] === 'list') {
+                $rules[$key] = ['nullable', 'array', 'max:'.($question['list']['max'] ?? Survey::MAX_LIST_ITEMS)];
+                $rules["{$key}.*"] = ['nullable', 'string', 'max:255'];
+
+                continue;
+            }
+
             if (in_array($question['type'], Survey::RANGE_TYPES, true)) {
                 $range = $question['range'];
                 $rules[$key] = [$presence, 'integer', "between:{$range['min']},{$range['max']}", $this->stepRule($question)];
@@ -172,10 +205,9 @@ class SubmitSurveyResponseRequest extends FormRequest
             }
 
             $maxLength = fn (int $limit): string => 'max:'.min($limit, $question['max_length'] ?: $limit);
-            $options = Survey::optionsFor($question, $this->analysis()['known']);
+            $options = $this->optionsOf($field);
             if (Survey::hasOtherOption($question)) {
-                $options[] = Survey::OTHER_VALUE;
-                $rules["{$key}".Survey::OTHER_SUFFIX] = ['nullable', 'string', 'max:255'];
+                $rules['answers.'.$this->otherKey($field)] = ['nullable', 'string', 'max:255'];
             }
 
             $rules[$key] = match ($question['type']) {
@@ -196,7 +228,7 @@ class SubmitSurveyResponseRequest extends FormRequest
                     : [$presence, 'string', 'max:50'],
                 'single', 'dropdown' => [$presence, 'string', Rule::in($options)],
                 'short' => [$presence, 'string', $maxLength(255), ...($question['mask'] !== '' ? [$this->maskRule($question)] : [])],
-                'multiple' => [$presence, 'array', ...($this->isRequired($question) ? ['min:1'] : [])],
+                'multiple' => [$presence, 'array', ...($field['state']['required'] ? ['min:1'] : [])],
                 default => [$presence, 'string', $maxLength(255)],
             };
 
@@ -295,8 +327,8 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
-     * Required tables need a filled cell and required matrices an answer on every row;
-     * the builder's "Validasi" rules run once the basics pass.
+     * Required tables need a filled cell, required matrices an answer on every row and required lists
+     * one name; the builder's "Validasi" rules and consistency checks run once the basics pass.
      *
      * @return array<int, callable>
      */
@@ -304,15 +336,21 @@ class SubmitSurveyResponseRequest extends FormRequest
     {
         return [
             function (Validator $validator) {
-                foreach ($this->editableQuestions() as $question) {
-                    $key = 'answers.'.$question['id'];
+                foreach ($this->editableFields() as $field) {
+                    $question = $field['question'];
+                    $key = 'answers.'.$field['key'];
+                    $required = $field['state']['required'];
 
-                    if ($question['type'] === 'table' && $this->isRequired($question) && $this->tableRows($question) === []) {
+                    if ($question['type'] === 'table' && $required && $this->tableRows($question) === []) {
                         $validator->errors()->add($key, $question['text'].' wajib diisi minimal satu baris.');
                     }
 
-                    if ($question['type'] === 'matrix' && $this->isRequired($question) && in_array('', $this->matrixAnswer($question) ?: [''], true)) {
+                    if ($question['type'] === 'matrix' && $required && in_array('', $this->matrixAnswer($question) ?: [''], true)) {
                         $validator->errors()->add($key, $question['text'].' wajib diisi pada setiap baris.');
+                    }
+
+                    if ($question['type'] === 'list' && $required && $this->listAnswer($field) === []) {
+                        $validator->errors()->add($key, $question['text'].' wajib diisi minimal satu nama.');
                     }
 
                     if ($validator->errors()->has($key) || $validator->errors()->has($key.'.*')) {
@@ -320,7 +358,7 @@ class SubmitSurveyResponseRequest extends FormRequest
                     }
 
                     if (Survey::hasOtherOption($question) && in_array(Survey::OTHER_VALUE, (array) $this->input($key), true)
-                        && trim((string) $this->input($key.Survey::OTHER_SUFFIX)) === '') {
+                        && trim((string) $this->input('answers.'.$this->otherKey($field))) === '') {
                         $validator->errors()->add($key, 'Sebutkan jawaban "'.Survey::OTHER_VALUE.'" untuk '.$question['text'].'.');
 
                         continue;
@@ -332,7 +370,7 @@ class SubmitSurveyResponseRequest extends FormRequest
                         continue;
                     }
 
-                    $this->checkConsistency($validator, $question);
+                    $this->checkConsistency($validator, $field);
                 }
             },
         ];
@@ -340,22 +378,26 @@ class SubmitSurveyResponseRequest extends FormRequest
 
     /**
      * Consistency checks (e.g. a man who is pregnant): errors must be fixed, warnings must be confirmed.
+     * In a repeating block they run, and are confirmed, per row.
      *
-     * @param  array<string, mixed>  $question
+     * @param  array<string, mixed>  $field
      */
-    private function checkConsistency(Validator $validator, array $question): void
+    private function checkConsistency(Validator $validator, array $field): void
     {
-        $confirmations = (array) $this->input('confirmations', []);
+        $question = $field['question'];
 
-        foreach (FieldValidation::failedChecks($question, $this->analysis()['known']) as $check) {
-            if ($check['level'] === 'warning' && ! empty($confirmations[$check['id']])) {
-                $this->confirmedWarnings[] = ['question_id' => $question['id'], 'check_id' => $check['id'], 'message' => $check['message']];
+        foreach (FieldValidation::failedChecks($question, $field['known']) as $check) {
+            $confirmed = $this->input('confirmations.'.$check['id'].($field['row'] === null ? '' : '.'.$field['row']));
+
+            if ($check['level'] === 'warning' && ! empty($confirmed) && ! is_array($confirmed)) {
+                $this->confirmedWarnings[] = ['question_id' => $question['id'], 'check_id' => $check['id'], 'message' => $check['message']]
+                    + ($field['row'] === null ? [] : ['row' => $field['row']]);
 
                 continue;
             }
 
             $validator->errors()->add(
-                'answers.'.$question['id'],
+                'answers.'.$field['key'],
                 $check['level'] === 'warning' ? 'Peringatan: '.$check['message'] : $check['message'],
             );
         }
@@ -364,7 +406,7 @@ class SubmitSurveyResponseRequest extends FormRequest
     /**
      * Warnings the respondent confirmed, to keep with the response for later review.
      *
-     * @return array{confirmed_warnings: list<array<string, string>>}|null
+     * @return array{confirmed_warnings: list<array<string, mixed>>}|null
      */
     public function flags(): ?array
     {
@@ -380,12 +422,14 @@ class SubmitSurveyResponseRequest extends FormRequest
     {
         $attributes = [];
 
-        foreach ($this->survey()->questions() as $question) {
-            $key = 'answers.'.$question['id'];
-            $attributes[$key] = $question['text'];
+        foreach ($this->editableFields() as $field) {
+            $question = $field['question'];
+            $key = 'answers.'.$field['key'];
+            $rowLabel = $field['row'] === null ? '' : ' (rincian '.($field['row'] + 1).')';
+            $attributes[$key] = $question['text'].$rowLabel;
 
-            foreach (Survey::regionFields($question) as $field) {
-                $attributes["{$key}.{$field['key']}"] = $field['label'];
+            foreach (Survey::regionFields($question) as $regionField) {
+                $attributes["{$key}.{$regionField['key']}"] = $regionField['label'];
             }
 
             foreach ($question['table']['columns'] ?? [] as $column) {
@@ -394,6 +438,10 @@ class SubmitSurveyResponseRequest extends FormRequest
 
             foreach ($question['matrix']['rows'] ?? [] as $index => $row) {
                 $attributes["{$key}.{$index}"] = $question['text'].' – '.$row;
+            }
+
+            if ($question['type'] === 'list') {
+                $attributes["{$key}.*"] = $question['text'];
             }
         }
 
@@ -420,64 +468,130 @@ class SubmitSurveyResponseRequest extends FormRequest
             'email' => ':attribute harus berupa alamat email yang valid.',
             'regex' => ':attribute harus berupa nomor telepon yang valid.',
             'in' => 'Pilihan untuk :attribute tidak valid.',
-            'max' => ':attribute terlalu panjang (maksimal :max karakter).',
+            'max' => ':attribute terlalu panjang (maksimal :max).',
             'string' => ':attribute tidak valid.',
             'array' => ':attribute tidak valid.',
+            'date_format' => ':attribute harus berupa jam yang valid (JJ:MM).',
         ];
     }
 
     /**
-     * The answers to store, keyed by question id: what the respondent filled in for editable questions,
-     * and the pre-filled value for disabled or hidden ones.
+     * The answers to store, keyed by question id: what the respondent filled in for editable fields,
+     * the pre-filled value for disabled or hidden ones, and the result of calculated ones. Questions
+     * of a repeating block hold a list with one entry per row.
      *
      * @return array<string, mixed>
      */
     public function answers(): array
     {
-        $submitted = $this->submittedAnswers();
-        $editable = array_column($this->editableQuestions(), 'id', 'id');
+        $editable = [];
+        foreach ($this->editableFields() as $field) {
+            $editable[$field['key']] = $field;
+        }
+
         $computed = $this->analysis()['computed'];
+        $rows = $this->analysis()['rows'];
         $answers = [];
 
-        foreach ($this->survey()->questions() as $question) {
-            if (isset($computed[$question['id']])) {
-                $answers[$question['id']] = $computed[$question['id']];
+        foreach ($this->survey()->blocks as $block) {
+            $repeating = SurveyLogic::repeatSource($block) !== null;
+            $rowCount = count($rows[$block['id']] ?? []);
 
-                continue;
-            }
-
-            if (! isset($editable[$question['id']])) {
-                if (($question['prefill'] ?? '') !== '' && ! in_array($question['type'], ['region', 'table', 'multiple'], true)) {
-                    $answers[$question['id']] = $question['prefill'];
+            foreach ($block['questions'] as $question) {
+                if ($question['type'] === 'info') {
+                    continue;
                 }
 
-                continue;
-            }
+                if (! $repeating) {
+                    $value = isset($computed[$question['id']])
+                        ? $computed[$question['id']]
+                        : $this->fieldAnswer($editable[$question['id']] ?? null, $question, $answers, $question['id']);
+                    if ($value !== '' && $value !== [] && $value !== null) {
+                        $answers[$question['id']] = $value;
+                    }
+                    // Keep the "Lainnya" text right after its answer.
+                    $otherKey = $question['id'].Survey::OTHER_SUFFIX;
+                    if (array_key_exists($otherKey, $answers)) {
+                        $other = $answers[$otherKey];
+                        unset($answers[$otherKey]);
+                        $answers[$otherKey] = $other;
+                    }
 
-            $answer = match ($question['type']) {
-                'region' => $this->regionAnswer($question, (array) ($submitted[$question['id']] ?? [])),
-                'table' => $this->tableRows($question),
-                'matrix' => $this->matrixAnswer($question),
-                'multiple' => array_values(array_intersect(
-                    [...Survey::optionsFor($question, $this->analysis()['known']), ...(Survey::hasOtherOption($question) ? [Survey::OTHER_VALUE] : [])],
-                    (array) ($submitted[$question['id']] ?? []),
-                )),
-                'file' => $this->storedFile($question, $submitted[$question['id']] ?? null),
-                'location' => preg_replace('/\s*,\s*/', ', ', trim((string) ($submitted[$question['id']] ?? ''))),
-                default => trim((string) ($submitted[$question['id']] ?? '')),
-            };
+                    continue;
+                }
 
-            if ($answer !== '' && $answer !== []) {
-                $answers[$question['id']] = $answer;
-            }
+                $values = [];
+                for ($row = 0; $row < $rowCount; $row++) {
+                    $values[$row] = isset($computed[$question['id']][$row])
+                        ? $computed[$question['id']][$row]
+                        : $this->fieldAnswer($editable[$question['id'].'.'.$row] ?? null, $question, $answers, $question['id'], $row);
+                }
 
-            $other = trim((string) ($submitted[$question['id'].Survey::OTHER_SUFFIX] ?? ''));
-            if (Survey::hasOtherOption($question) && $other !== '' && in_array(Survey::OTHER_VALUE, (array) $answer, true)) {
-                $answers[$question['id'].Survey::OTHER_SUFFIX] = $other;
+                if (array_filter($values, fn ($value): bool => $value !== '' && $value !== [] && $value !== null) !== []) {
+                    $answers[$question['id']] = array_map(fn ($value) => $value ?? '', $values);
+                }
             }
         }
 
         return $answers;
+    }
+
+    /**
+     * One field's stored answer; its "Lainnya" text is added to $answers next to it.
+     *
+     * @param  array<string, mixed>|null  $field  null when the field is hidden or disabled
+     * @param  array<string, mixed>  $question
+     * @param  array<string, mixed>  $answers
+     */
+    private function fieldAnswer(?array $field, array $question, array &$answers, string $id, ?int $row = null): mixed
+    {
+        if ($field === null) {
+            // Hidden or disabled: the pre-filled value stands, where one makes sense.
+            $hidden = $this->analysis()['states'][$id]['hidden'] ?? true;
+
+            return ($question['prefill'] ?? '') !== '' && ! in_array($question['type'], ['region', 'table', 'multiple'], true) && ! ($row !== null && $hidden)
+                ? $question['prefill']
+                : '';
+        }
+
+        $submitted = $this->submittedAnswers();
+        $raw = $row === null ? ($submitted[$id] ?? null) : (is_array($submitted[$id] ?? null) ? ($submitted[$id][$row] ?? null) : null);
+        $question = $field['question'];
+
+        $answer = match ($question['type']) {
+            'region' => $this->regionAnswer($question, (array) $raw),
+            'table' => $this->tableRows($question),
+            'matrix' => $this->matrixAnswer($question),
+            'list' => $this->listAnswer($field),
+            'multiple' => array_values(array_intersect($this->optionsOf($field), (array) $raw)),
+            'file' => $this->storedFile($question, $raw),
+            'location' => preg_replace('/\s*,\s*/', ', ', trim((string) $raw)),
+            default => is_scalar($raw) ? trim((string) $raw) : '',
+        };
+
+        $other = trim((string) $this->input('answers.'.$this->otherKey($field)));
+        if (Survey::hasOtherOption($question) && $other !== '' && in_array(Survey::OTHER_VALUE, (array) $answer, true)) {
+            if ($row === null) {
+                $answers[$id.Survey::OTHER_SUFFIX] = $other;
+            } else {
+                $answers[$id.Survey::OTHER_SUFFIX][$row] = $other;
+            }
+        }
+
+        return $answer;
+    }
+
+    /**
+     * The non-empty names of a list question, in order.
+     *
+     * @param  array<string, mixed>  $field
+     * @return list<string>
+     */
+    private function listAnswer(array $field): array
+    {
+        $items = array_map(fn ($item): string => is_scalar($item) ? trim((string) $item) : '', (array) $this->input('answers.'.$field['key'], []));
+
+        return array_values(array_filter($items, fn (string $item): bool => $item !== ''));
     }
 
     /**

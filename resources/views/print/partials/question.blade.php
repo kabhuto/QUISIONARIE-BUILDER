@@ -165,6 +165,12 @@
                         @endforeach
                     </span>
                 @endif
+            @elseif ($type === 'list')
+                <span class="sheet-options">
+                    @foreach ($hasAnswer ? (array) $answer : array_fill(0, 3, '') as $item)
+                        <span>{{ $loop->iteration }}. @if ($item !== ''){{ $item }}@else<span class="sheet-dots"></span>@endif</span>
+                    @endforeach
+                </span>
             @elseif ($type === 'calc')
                 @if ($hasAnswer)
                     <span class="sheet-value">{{ \App\Support\Formula::display((string) $answer, $question['format'] ?? 'number', (int) ($question['decimals'] ?? 0)) }}</span>

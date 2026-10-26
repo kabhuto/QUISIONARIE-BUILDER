@@ -21,6 +21,7 @@
         'signature' => ['✎', 'icon-paragraph'],
         'region' => ['⌖', 'icon-block'],
         'table' => ['▦▦', 'icon-code'],
+        'list' => ['☰', 'icon-text'],
         'calc' => ['ƒx', 'icon-number'],
         'location' => ['⌾', 'icon-block'],
         'file' => ['⇪', 'icon-paragraph'],

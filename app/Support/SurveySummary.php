@@ -19,7 +19,10 @@ class SurveySummary
     {
         return array_map(function (array $question) use ($responses): array {
             $answered = $responses->filter(fn (SurveyResponse $response): bool => $response->displayAnswer($question) !== '');
-            $answers = $answered->map(fn (SurveyResponse $response) => $response->answerTo($question['id']));
+            // In a repeating block every row's answer counts.
+            $answers = $answered->flatMap(fn (SurveyResponse $response): array => ! empty($question['in_roster'])
+                ? array_values(array_filter((array) $response->answerTo($question['id']), fn ($value): bool => $value !== '' && $value !== [] && $value !== null))
+                : [$response->answerTo($question['id'])]);
 
             $summary = [
                 'question' => $question,

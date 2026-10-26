@@ -35,6 +35,47 @@
         @foreach ($survey->blocks as $blockIndex => $block)
             <section class="detail-block">
                 <header class="detail-block-head"><span>BLOK {{ \App\Models\Survey::roman($blockIndex + 1) }}.</span> {{ $block['title'] }}</header>
+                @if (\App\Support\SurveyLogic::repeatSource($block) !== null)
+                    @php
+                        $rosterQuestions = array_values(array_filter($block['questions'], fn (array $question): bool => $question['type'] !== 'info'));
+                        $rosterRows = \App\Support\SurveyLogic::rosterRows($block, $response->answers ?? []);
+                    @endphp
+                    @if ($rosterRows === [])
+                        <p class="detail-roster-empty">Tidak ada rincian (pertanyaan {{ $numbers[$block['repeat']['source']] ?? '' }} tidak diisi).</p>
+                    @else
+                        <div class="detail-roster-wrap">
+                            <table class="data-table detail-table">
+                                <thead>
+                                    <tr>
+                                        <th>Rincian</th>
+                                        @foreach ($rosterQuestions as $question)
+                                            <th><span class="mono">{{ $numbers[$question['id']] ?? '' }}</span> {{ str_replace(\App\Models\Survey::ROW_TOKEN, '…', $questionIndex[$question['id']]['text'] ?? $question['label']) }}</th>
+                                        @endforeach
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($rosterRows as $row => $rowLabel)
+                                        <tr>
+                                            <th>{{ $row + 1 }}. {{ $rowLabel }}</th>
+                                            @foreach ($rosterQuestions as $question)
+                                                @php
+                                                    $values = $response->answerTo($question['id']);
+                                                    $others = (array) ($response->answers[$question['id'].\App\Models\Survey::OTHER_SUFFIX] ?? []);
+                                                @endphp
+                                                <td>{{ \App\Models\SurveyResponse::displayValue($question, is_array($values) ? ($values[$row] ?? null) : null, (string) ($others[$row] ?? '')) }}</td>
+                                            @endforeach
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                    @foreach ($rosterQuestions as $question)
+                        @foreach ($confirmed->get($question['id'], []) as $warning)
+                            <p class="detail-flag">⚠ Peringatan dikonfirmasi (rincian {{ ($warning['row'] ?? 0) + 1 }}): {{ $warning['message'] }}</p>
+                        @endforeach
+                    @endforeach
+                @else
                 <dl>
                     @foreach ($block['questions'] as $question)
                         @continue($question['type'] === 'info')
@@ -107,6 +148,7 @@
                         </div>
                     @endforeach
                 </dl>
+                @endif
             </section>
         @endforeach
     </div>

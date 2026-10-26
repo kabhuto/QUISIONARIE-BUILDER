@@ -245,3 +245,16 @@ textarea.fill-input{resize:vertical;min-height:84px}
 .cawi-location .fill-hint{flex-basis:100%;margin:0}
 .cawi-file input[type="file"]{padding:8px;background:#fff}
 .cawi-file-preview{display:block;max-width:220px;max-height:160px;margin-top:8px;border-radius:8px;border:1px solid #dbe3e8;object-fit:cover}
+/* Repeating blocks and lists of names */
+.roster-rows{display:flex;flex-direction:column;gap:14px}
+.roster-row{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;background:#fff;overflow:hidden}
+.roster-row-head{display:flex;align-items:baseline;gap:10px;margin:0;padding:10px 16px;background:color-mix(in srgb,var(--accent) 7%,#fff);border-bottom:1px solid var(--line);font-size:14px;font-weight:600;color:var(--muted)}
+.roster-row-head b{color:var(--ink)}
+.roster-row-head strong{color:var(--ink);font-size:15px}
+.roster-row>.cawi-block-body{padding-top:4px}
+.roster-empty{margin:4px 0 0;padding:12px 14px;border:1px dashed var(--line);border-radius:8px;background:var(--soft)}
+.fill-pipe.is-row{color:var(--ink)}
+.cawi-list ol{margin:0 0 8px;padding-left:22px;display:flex;flex-direction:column;gap:6px}
+.cawi-list li{padding-left:4px}
+.cawi-list li input{width:calc(100% - 36px);max-width:420px}
+.cawi-list li .link-button{margin-left:6px;font-size:18px;line-height:1;vertical-align:middle}

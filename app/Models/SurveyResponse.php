@@ -52,7 +52,32 @@ class SurveyResponse extends Model
             return '';
         }
 
-        $other = trim((string) ($this->answers[$question['id'].Survey::OTHER_SUFFIX] ?? ''));
+        // A question in a repeating block holds one answer per row: "1) … | 2) …".
+        if (! empty($question['in_roster']) && is_array($answer)) {
+            $others = (array) ($this->answers[$question['id'].Survey::OTHER_SUFFIX] ?? []);
+
+            return collect($answer)
+                ->map(fn ($value, int $row): string => self::displayValue($question, $value, (string) ($others[$row] ?? '')))
+                ->filter(fn (string $text): bool => $text !== '')
+                ->map(fn (string $text, int $row): string => ($row + 1).') '.$text)
+                ->implode(' | ');
+        }
+
+        return self::displayValue($question, $answer, (string) ($this->answers[$question['id'].Survey::OTHER_SUFFIX] ?? ''));
+    }
+
+    /**
+     * One value of a question as text; $other is the text typed with "Lainnya".
+     *
+     * @param  array<string, mixed>  $question
+     */
+    public static function displayValue(array $question, mixed $answer, string $other = ''): string
+    {
+        if ($answer === null || $answer === '' || $answer === []) {
+            return '';
+        }
+
+        $other = trim($other);
         if ($other !== '' && in_array(Survey::OTHER_VALUE, (array) $answer, true)) {
             $answer = array_map(fn ($value) => $value === Survey::OTHER_VALUE ? Survey::OTHER_VALUE.': '.$other : $value, (array) $answer);
             $answer = $question['type'] === 'multiple' ? $answer : $answer[0];

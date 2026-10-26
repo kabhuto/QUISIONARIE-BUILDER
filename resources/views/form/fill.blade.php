@@ -124,13 +124,31 @@
                 <form class="fill-form" id="fill-form" method="POST" action="{{ $canSubmit ? route('form.store', $survey) : '#' }}" enctype="multipart/form-data" novalidate @if ($isPreview) data-preview @endif>
                     @csrf
                     @foreach ($survey->blocks as $blockIndex => $block)
-                        <section class="cawi-card fill-block" id="blok-{{ $block['id'] }}" data-block-id="{{ $block['id'] }}" @if (! empty($block['condition'])) data-condition="{{ json_encode($block['condition']) }}" @endif>
+                        @php
+                            $repeatSource = \App\Support\SurveyLogic::repeatSource($block);
+                            $repeatKind = $repeatSource ? (collect($survey->questions())->firstWhere('id', $repeatSource)['type'] ?? 'number') : null;
+                        @endphp
+                        <section @class(['cawi-card', 'fill-block', 'is-roster' => $repeatSource]) id="blok-{{ $block['id'] }}" data-block-id="{{ $block['id'] }}" @if (! empty($block['condition'])) data-condition="{{ json_encode($block['condition']) }}" @endif
+                            @if ($repeatSource) data-repeat-source="{{ $repeatSource }}" data-repeat-max="{{ $block['repeat']['max'] ?? 20 }}" data-repeat-kind="{{ $repeatKind }}" @endif>
                             <header class="cawi-block-head"><h2>BLOK {{ \App\Models\Survey::roman($blockIndex + 1) }}. {{ $block['title'] }}</h2></header>
-                            <div class="cawi-block-body">
-                                @foreach ($block['questions'] as $question)
-                                    @include('form.partials.question', ['question' => $question, 'numbers' => $numbers])
-                                @endforeach
-                            </div>
+                            @if ($repeatSource)
+                                {{-- One set of questions per answer of the source question; JavaScript adds and removes rows. --}}
+                                <p class="fill-hint roster-empty" data-roster-empty>Blok ini diisi untuk setiap {{ $repeatKind === 'number' ? 'jumlah' : 'jawaban' }} pada pertanyaan {{ $numbers[$repeatSource] ?? '' }}. Jawab pertanyaan itu terlebih dahulu.</p>
+                                <div class="roster-rows" data-roster-rows>
+                                    @foreach (\App\Support\SurveyLogic::rosterRows($block, (array) old('answers', [])) as $row => $rowLabel)
+                                        @include('form.partials.roster-row', ['row' => $row, 'rowLabel' => $rowLabel])
+                                    @endforeach
+                                </div>
+                                <template data-roster-template>
+                                    @include('form.partials.roster-row', ['row' => '__R__', 'rowLabel' => ''])
+                                </template>
+                            @else
+                                <div class="cawi-block-body">
+                                    @foreach ($block['questions'] as $question)
+                                        @include('form.partials.question', ['question' => $question, 'numbers' => $numbers, 'row' => null])
+                                    @endforeach
+                                </div>
+                            @endif
                         </section>
                     @endforeach
 

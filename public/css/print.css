@@ -122,3 +122,8 @@ body.print-page{background:#fff}
 .sheet-dots{display:inline-block;min-width:120px;border-bottom:1px dotted #000;vertical-align:bottom}
 .sheet-dots.is-wide{min-width:90px}
 .sheet-photo{display:block;max-width:180px;max-height:120px;border:1px solid #000;object-fit:cover}
+.sheet-roster-note{padding:4px 6px;font-size:9.5px;font-style:italic;border-bottom:1px solid #000}
+.sheet-roster{margin:0;font-size:9px}
+.sheet-roster th{vertical-align:top}
+.sheet-roster tbody td,.sheet-roster tbody th{height:20px;text-align:left}
+.sheet-roster tbody td:first-child{text-align:center;width:24px}

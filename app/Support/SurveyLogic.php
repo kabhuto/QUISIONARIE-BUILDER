@@ -79,6 +79,9 @@ class SurveyLogic
         if (($question['type'] ?? null) === 'file') {
             $question += ['file' => ['accept' => 'image', 'max_mb' => 5]];
         }
+        if (($question['type'] ?? null) === 'list') {
+            $question += ['list' => ['max' => 10]];
+        }
         $question['validation'] = (is_array($question['validation']) ? $question['validation'] : []) + ['rules' => [], 'message' => '', 'checks' => []];
 
         if (is_array($legacy) && ($legacy['question_id'] ?? null) && ! $question['logic']) {
@@ -125,65 +128,195 @@ class SurveyLogic
     }
 
     /**
-     * The states, plus the answer of every visible question as the logic sees it
-     * (a disabled question holds its pre-filled value, a calculated one its result).
+     * Every answerable field after applying the form's logic — one per question, or one per row and
+     * question in a repeating block — plus each answer as the logic sees it: a disabled question holds
+     * its pre-filled value, a calculated one its result, and a question in a repeating block the list
+     * of its rows' answers.
      *
      * @param  array<int, array<string, mixed>>  $blocks
      * @param  array<string, mixed>  $answers
-     * @return array{states: array<string, array{hidden: bool, disabled: bool, required: bool}>, known: array<string, mixed>, computed: array<string, string>}
+     * @return array{
+     *     states: array<string, array{hidden: bool, disabled: bool, required: bool}>,
+     *     fields: list<array{question: array<string, mixed>, key: string, row: int|null, state: array{hidden: bool, disabled: bool, required: bool}, known: array<string, mixed>}>,
+     *     known: array<string, mixed>,
+     *     computed: array<string, string|array<int, string|null>>,
+     *     rows: array<string, list<string>>
+     * }
      */
     public static function analyse(array $blocks, array $answers): array
     {
         $known = [];
         $states = [];
         $computed = [];
+        $fields = [];
+        $rows = [];
 
         foreach ($blocks as $block) {
             $blockVisible = self::passes($block['condition'] ?? null, $known);
 
-            foreach ($block['questions'] as $question) {
-                $question = self::upgradeQuestion($question);
-                $state = [
-                    'hidden' => ! $blockVisible || $question['hidden'],
-                    'disabled' => $question['disabled'],
-                    'required' => $question['required'],
-                ];
+            if (self::repeatSource($block) !== null) {
+                $labels = $blockVisible ? self::rosterRows($block, $known) : [];
+                $rows[$block['id']] = $labels;
+                $outside = $known;
+                $rowValues = [];
 
-                $logic = $question['logic'];
-                if ($blockVisible && $logic && self::evaluate($logic['conditions'] ?? null, $known)) {
-                    $state = self::apply($logic['actions'] ?? [], $state);
-                }
+                foreach ($labels as $row => $label) {
+                    $rowKnown = $outside;
+                    $rowFields = [];
 
-                if (in_array($question['type'], ['info', ...Survey::COMPUTED_TYPES], true) || $state['hidden'] || $state['disabled']) {
-                    $state['required'] = false;
-                }
+                    foreach ($block['questions'] as $question) {
+                        $question = self::upgradeQuestion($question);
+                        $value = fn (string $id): mixed => is_array($answers[$id] ?? null) ? ($answers[$id][$row] ?? null) : null;
+                        $state = self::stateOf($question, true, $rowKnown);
+                        $states[$question['id']] ??= $state;
 
-                $states[$question['id']] = $state;
+                        if (! $state['hidden'] && $question['type'] !== 'info') {
+                            $result = self::fieldValue($question, $state, $rowKnown, $value);
+                            $rowKnown[$question['id']] = $result;
+                            $rowValues[$question['id']][$row] = $result;
+                            if ($question['type'] === 'calc' && $result !== null) {
+                                $computed[$question['id']][$row] = $result;
+                            }
+                            if (Survey::hasOtherOption($question) && ! $state['disabled']) {
+                                $rowKnown[$question['id'].Survey::OTHER_SUFFIX] = $value($question['id'].Survey::OTHER_SUFFIX);
+                            }
+                        }
 
-                if ($state['hidden']) {
-                    continue;
-                }
-
-                if ($question['type'] === 'calc') {
-                    $result = Formula::result($question, $known);
-                    $known[$question['id']] = $result;
-                    if ($result !== null) {
-                        $computed[$question['id']] = $result;
+                        $rowFields[] = ['question' => $question, 'key' => $question['id'].'.'.$row, 'row' => $row, 'state' => $state];
                     }
 
-                    continue;
+                    foreach ($rowFields as $field) {
+                        $fields[] = $field + ['known' => $rowKnown];
+                    }
                 }
 
-                // A disabled field cannot be changed by the respondent, so it holds its pre-filled value.
-                $known[$question['id']] = $state['disabled'] ? ($question['prefill'] ?: null) : ($answers[$question['id']] ?? null);
-
-                if (Survey::hasOtherOption($question) && ! $state['disabled']) {
-                    $known[$question['id'].Survey::OTHER_SUFFIX] = $answers[$question['id'].Survey::OTHER_SUFFIX] ?? null;
+                // Outside the block a question of a repeating block stands for the list of its rows' answers.
+                foreach ($block['questions'] as $question) {
+                    if ($question['type'] !== 'info' && $labels !== []) {
+                        $known[$question['id']] = array_map(fn (int $row): mixed => $rowValues[$question['id']][$row] ?? null, array_keys($labels));
+                    }
+                    $states[$question['id']] ??= ['hidden' => true, 'disabled' => false, 'required' => false];
                 }
+
+                continue;
+            }
+
+            foreach ($block['questions'] as $question) {
+                $question = self::upgradeQuestion($question);
+                $state = self::stateOf($question, $blockVisible, $known);
+                $states[$question['id']] = $state;
+                $field = ['question' => $question, 'key' => $question['id'], 'row' => null, 'state' => $state];
+
+                if (! $state['hidden'] && $question['type'] !== 'info') {
+                    $result = self::fieldValue($question, $state, $known, fn (string $id): mixed => $answers[$id] ?? null);
+                    $known[$question['id']] = $result;
+                    if ($question['type'] === 'calc' && $result !== null) {
+                        $computed[$question['id']] = $result;
+                    }
+                    if (Survey::hasOtherOption($question) && ! $state['disabled']) {
+                        $known[$question['id'].Survey::OTHER_SUFFIX] = $answers[$question['id'].Survey::OTHER_SUFFIX] ?? null;
+                    }
+                }
+
+                $fields[] = $field + ['known' => []];
             }
         }
 
-        return ['states' => $states, 'known' => $known, 'computed' => $computed];
+        // Fields outside repeating blocks see every answer (their checks only use earlier ones).
+        foreach ($fields as $index => $field) {
+            if ($field['row'] === null) {
+                $fields[$index]['known'] = $known;
+            }
+        }
+
+        return ['states' => $states, 'fields' => $fields, 'known' => $known, 'computed' => $computed, 'rows' => $rows];
+    }
+
+    /**
+     * Base flags, then the question's logic when its rules hold; hidden, disabled, calculated
+     * and information items are never required.
+     *
+     * @param  array<string, mixed>  $question
+     * @param  array<string, mixed>  $known
+     * @return array{hidden: bool, disabled: bool, required: bool}
+     */
+    private static function stateOf(array $question, bool $blockVisible, array $known): array
+    {
+        $state = [
+            'hidden' => ! $blockVisible || $question['hidden'],
+            'disabled' => $question['disabled'],
+            'required' => $question['required'],
+        ];
+
+        $logic = $question['logic'];
+        if ($blockVisible && $logic && self::evaluate($logic['conditions'] ?? null, $known)) {
+            $state = self::apply($logic['actions'] ?? [], $state);
+        }
+
+        if (in_array($question['type'], ['info', ...Survey::COMPUTED_TYPES], true) || $state['hidden'] || $state['disabled']) {
+            $state['required'] = false;
+        }
+
+        return $state;
+    }
+
+    /**
+     * The answer a visible question holds: its result when calculated, its pre-filled value when
+     * disabled, otherwise what was submitted.
+     *
+     * @param  array<string, mixed>  $question
+     * @param  array{hidden: bool, disabled: bool, required: bool}  $state
+     * @param  array<string, mixed>  $known
+     * @param  callable(string): mixed  $submitted
+     */
+    private static function fieldValue(array $question, array $state, array $known, callable $submitted): mixed
+    {
+        if ($question['type'] === 'calc') {
+            return Formula::result($question, $known);
+        }
+
+        return $state['disabled'] ? ($question['prefill'] ?: null) : $submitted($question['id']);
+    }
+
+    /**
+     * The question a repeating block repeats for, if any.
+     *
+     * @param  array<string, mixed>  $block
+     */
+    public static function repeatSource(array $block): ?string
+    {
+        $source = $block['repeat']['source'] ?? null;
+
+        return is_string($source) && $source !== '' ? $source : null;
+    }
+
+    /**
+     * The rows of a repeating block: "1", "2", … for a number, the chosen options for a multiple choice
+     * ("Lainnya" stands for its typed text), or the names in a list.
+     *
+     * @param  array<string, mixed>  $block
+     * @param  array<string, mixed>  $known
+     * @return list<string>
+     */
+    public static function rosterRows(array $block, array $known): array
+    {
+        $source = self::repeatSource($block);
+        $max = min(Survey::MAX_ROSTER_ROWS, max(1, (int) ($block['repeat']['max'] ?? 20)));
+        $answer = $source === null ? null : ($known[$source] ?? null);
+
+        if (is_array($answer)) {
+            $other = trim((string) ($known[$source.Survey::OTHER_SUFFIX] ?? ''));
+            $labels = array_map(
+                fn ($value): string => $value === Survey::OTHER_VALUE && $other !== '' ? $other : trim((string) $value),
+                array_filter($answer, fn ($value): bool => is_scalar($value) && trim((string) $value) !== ''),
+            );
+
+            return array_slice(array_values($labels), 0, $max);
+        }
+
+        $count = is_numeric($answer) ? (int) $answer : 0;
+
+        return array_map('strval', $count > 0 ? range(1, min($count, $max)) : []);
     }
 
     /**

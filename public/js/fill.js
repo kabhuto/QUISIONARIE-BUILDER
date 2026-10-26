@@ -40,6 +40,7 @@
             return filled ? ['filled'] : [];
         }
         if (type === 'calc') return question.dataset.value ?? '';
+        if (type === 'list') return [...question.querySelectorAll('[data-list-items] input')].map(fieldValue).filter(Boolean);
         if (type === 'file') {
             const input = question.querySelector('input[type="file"]');
             return input?.files?.length ? input.files[0].name : '';
@@ -184,7 +185,8 @@
 
     function formulaNumber(value) {
         if (typeof value === 'number') return value;
-        if (Array.isArray(value) || value === null || value === undefined) return 0;
+        if (Array.isArray(value)) return value.filter(item => !Array.isArray(item)).reduce((total, item) => total + formulaNumber(item), 0);
+        if (value === null || value === undefined) return 0;
         const text = String(value).trim().replace(',', '.');
         return text !== '' && !Number.isNaN(Number(text)) ? Number(text) : 0;
     }
@@ -227,10 +229,10 @@
                 const [, name, args] = node;
                 if (name === 'if') return formulaNumber(runFormula(args[formulaNumber(runFormula(args[0], answers)) !== 0 ? 1 : 2], answers));
                 const values = args.map(argument => runFormula(argument, answers));
-                const numbers = () => values.map(formulaNumber);
+                const numbers = () => values.flatMap(value => (Array.isArray(value) ? value : [value])).map(formulaNumber);
                 switch (name) {
                     case 'sum': return numbers().reduce((total, value) => total + value, 0);
-                    case 'avg': return numbers().reduce((total, value) => total + value, 0) / values.length;
+                    case 'avg': return numbers().reduce((total, value) => total + value, 0) / Math.max(1, numbers().length);
                     case 'min': return Math.min(...numbers());
                     case 'max': return Math.max(...numbers());
                     case 'round': {
@@ -290,9 +292,13 @@
         return values.join(', ');
     }
 
-    function updatePipes(known) {
-        form.closest('body').querySelectorAll('[data-pipe]').forEach(pipe => {
-            const source = form.querySelector(`.fill-question[data-question-id="${CSS.escape(pipe.dataset.pipe)}"]`);
+    // Pipes in a repeating block's row read that row's answers; all others read the form's.
+    function updatePipes(root, known) {
+        const row = root.matches?.('[data-roster-row]') ? root : null;
+        root.querySelectorAll('[data-pipe]').forEach(pipe => {
+            if ((pipe.closest('[data-roster-row]') ?? null) !== row) return;
+            const selector = `.fill-question[data-question-id="${CSS.escape(pipe.dataset.pipe)}"]`;
+            const source = (row && row.querySelector(selector)) || form.querySelector(selector);
             const text = answerText(source, known[pipe.dataset.pipe], known);
             pipe.textContent = text || pipe.dataset.fallback || '…';
             pipe.classList.toggle('is-empty', !text);
@@ -384,34 +390,57 @@
             .filter(question => !question.hidden && !question.closest('.fill-block').hidden && !question.classList.contains('is-disabled'));
     }
 
+    // One question under the logic: its state, then its answer added to what later questions see.
+    function processQuestion(question, blockVisible, known) {
+        const state = stateOf(question, blockVisible, known);
+        question.hidden = state.hidden;
+        question.classList.toggle('is-disabled', state.disabled);
+        question.toggleAttribute('data-required', state.required);
+        question.querySelectorAll('input, select, textarea, button').forEach(field => (field.disabled = state.hidden || state.disabled));
+        question.knownAnswers = known;
+        if (state.hidden || question.dataset.type === 'info') return;
+        const id = question.dataset.questionId;
+        if (question.dataset.optionsFrom) syncDynamicOptions(question, known);
+        if (question.dataset.type === 'calc') {
+            const value = evaluateFormula(question.dataset.formula ?? '', known);
+            const decimals = Number(question.dataset.decimals || 0);
+            question.dataset.value = value === null ? '' : plainNumber(value, decimals);
+            question.querySelector('[data-calc-output]').textContent = value === null ? '—' : displayNumber(question.dataset.value, question.dataset.format, decimals);
+        }
+        syncOtherText(question);
+        known[id] = answerOf(question);
+        const other = question.querySelector('[data-other-text]');
+        if (other) known[`${id}${OTHER_SUFFIX}`] = fieldValue(other);
+    }
+
+    // A repeating block: rows follow the source answer, each row answered (and checked) on its own;
+    // later questions see each of its questions as the list of its rows' answers.
+    function processRoster(block, blockVisible, known) {
+        const labels = blockVisible ? rosterRowsFor(block, known) : [];
+        syncRoster(block, labels);
+        block.querySelector('[data-roster-empty]').hidden = !blockVisible || labels.length > 0;
+        const lists = {};
+        block.querySelectorAll('[data-roster-row]').forEach((rowNode, row) => {
+            const rowKnown = { ...known };
+            rowNode.querySelectorAll('.fill-question').forEach(question => {
+                processQuestion(question, blockVisible, rowKnown);
+                if (!question.hidden && question.dataset.type !== 'info') (lists[question.dataset.questionId] ??= [])[row] = rowKnown[question.dataset.questionId];
+            });
+            updatePipes(rowNode, rowKnown);
+        });
+        Object.entries(lists).forEach(([id, values]) => (known[id] = labels.map((label, row) => values[row] ?? null)));
+    }
+
     function applyLogic() {
         const known = {};
         blocks.forEach(block => {
             const blockVisible = passes(conditionOf(block), known);
             block.hidden = !blockVisible;
             document.querySelector(`[data-nav-block="${CSS.escape(block.dataset.blockId)}"]`)?.toggleAttribute('hidden', !blockVisible);
-            block.querySelectorAll('.fill-question').forEach(question => {
-                const state = stateOf(question, blockVisible, known);
-                question.hidden = state.hidden;
-                question.classList.toggle('is-disabled', state.disabled);
-                question.toggleAttribute('data-required', state.required);
-                question.querySelectorAll('input, select, textarea, button').forEach(field => (field.disabled = state.hidden || state.disabled));
-                if (state.hidden || question.dataset.type === 'info') return;
-                const id = question.dataset.questionId;
-                if (question.dataset.optionsFrom) syncDynamicOptions(question, known);
-                if (question.dataset.type === 'calc') {
-                    const value = evaluateFormula(question.dataset.formula ?? '', known);
-                    const decimals = Number(question.dataset.decimals || 0);
-                    question.dataset.value = value === null ? '' : plainNumber(value, decimals);
-                    question.querySelector('[data-calc-output]').textContent = value === null ? '—' : displayNumber(question.dataset.value, question.dataset.format, decimals);
-                }
-                syncOtherText(question);
-                known[id] = answerOf(question);
-                const other = question.querySelector('[data-other-text]');
-                if (other) known[`${id}${OTHER_SUFFIX}`] = fieldValue(other);
-            });
+            if (block.dataset.repeatSource) return processRoster(block, blockVisible, known);
+            block.querySelectorAll('.fill-question').forEach(question => processQuestion(question, blockVisible, known));
         });
-        updatePipes(known);
+        updatePipes(document.body, known);
         form.querySelectorAll('.cawi-table[data-mode="dynamic"]').forEach(table => {
             const question = table.closest('.fill-question');
             if (!question.hidden && !question.classList.contains('is-disabled')) updateAddButton(table);
@@ -429,7 +458,7 @@
             checks.forEach(check => {
                 const element = question.querySelector(`[data-check-id="${CSS.escape(check.id)}"]`);
                 if (!element) return;
-                const failing = active && evaluate(check.conditions, known);
+                const failing = active && evaluate(check.conditions, question.knownAnswers ?? known);
                 element.hidden = !failing;
                 element.querySelectorAll('input').forEach(input => (input.disabled = !failing));
                 if (!failing) element.classList.remove('needs-attention');
@@ -548,7 +577,7 @@
         digits.forEach((digit, index) => (digit.value = value[index] ?? ''));
     }
 
-    form.querySelectorAll('.code-input').forEach(group => {
+    function bindCodeInput(group) {
         const digits = [...group.querySelectorAll('.code-digit')];
         const hidden = group.querySelector('input[type="hidden"]');
         const sync = () => {
@@ -578,7 +607,9 @@
                 applyLogic();
             });
         });
-    });
+    }
+
+    form.querySelectorAll('.code-input').forEach(bindCodeInput);
 
     form.querySelectorAll('[data-currency]').forEach(formatRupiah);
 
@@ -715,6 +746,121 @@
         }
     });
 
+
+    // ── Repeating blocks ───────────────────────────────────────────────────
+
+    // Mirrors SurveyLogic::rosterRows(): "1", "2", … for a number, chosen options or listed names otherwise.
+    function rosterRowsFor(block, known) {
+        const source = block.dataset.repeatSource;
+        const max = Number(block.dataset.repeatMax || 20);
+        const answer = known[source];
+        if (Array.isArray(answer)) {
+            const other = String(known[`${source}${OTHER_SUFFIX}`] ?? '').trim();
+            return answer.map(value => String(value ?? '').trim()).filter(Boolean)
+                .map(value => (value === OTHER_VALUE && other ? other : value)).slice(0, max);
+        }
+        const count = toNumber(answer);
+        return count && count > 0 ? Array.from({ length: Math.min(Math.floor(count), max) }, (item, index) => String(index + 1)) : [];
+    }
+
+    const rosterCaches = new WeakMap();
+
+    // Points a row's fields at its position: answers[id][row], confirmations[check][row], ids and labels.
+    function renumberRow(node, row, label) {
+        node.dataset.rosterRow = String(row);
+        node.querySelectorAll('[name]').forEach(field => {
+            field.name = field.name.replace(/^(answers|confirmations)\[([^\]]+)\]\[(?:\d+|__R__)\]/, `$1[$2][${row}]`);
+        });
+        node.querySelectorAll('[id], [for], [aria-labelledby]').forEach(element => {
+            ['id', 'for', 'aria-labelledby'].forEach(attribute => {
+                const value = element.getAttribute(attribute);
+                if (value) element.setAttribute(attribute, value.replace(/^(answer-.+?)-(?:\d+|__R__)((?:-label|-[a-z_]+)?)$/, `$1-${row}$2`));
+            });
+        });
+        node.querySelectorAll('.fill-question').forEach(question => (question.dataset.row = String(row)));
+        node.querySelector('[data-row-number]').textContent = row + 1;
+        node.querySelectorAll('[data-row-label]').forEach(element => (element.textContent = label));
+    }
+
+    function syncRoster(block, labels) {
+        const container = block.querySelector('[data-roster-rows]');
+        const seen = new Map();
+        const keys = labels.map(label => {
+            seen.set(label, (seen.get(label) ?? 0) + 1);
+            return seen.get(label) > 1 ? `${label}#${seen.get(label)}` : label;
+        });
+        const current = [...container.children];
+        if (current.length === keys.length && current.every((node, index) => node.dataset.rowKey === keys[index])) return;
+
+        // Rows that drop out are kept aside, so ticking an option again brings its answers back.
+        const cache = rosterCaches.get(block) ?? new Map();
+        rosterCaches.set(block, cache);
+        current.forEach(node => cache.set(node.dataset.rowKey, node));
+        const template = block.querySelector('[data-roster-template]');
+        const nodes = keys.map((key, row) => {
+            let node = cache.get(key);
+            if (!node) {
+                const holder = document.createElement('div');
+                holder.innerHTML = template.innerHTML.replaceAll('__R__', String(row)).trim();
+                node = holder.firstElementChild;
+                node.dataset.rowKey = key;
+                node.querySelectorAll('.code-input').forEach(bindCodeInput);
+                node.querySelectorAll('[data-currency]').forEach(formatRupiah);
+            }
+            cache.delete(key);
+            renumberRow(node, row, labels[row]);
+            return node;
+        });
+        container.replaceChildren(...nodes);
+    }
+
+    // ── Lists of names ─────────────────────────────────────────────────────
+
+    function listItem(list, value = '') {
+        const name = list.closest('.fill-question').dataset.questionId;
+        const items = list.querySelector('[data-list-items]');
+        const next = Number(list.dataset.nextIndex ?? items.children.length);
+        list.dataset.nextIndex = String(next + 1);
+        const item = document.createElement('li');
+        item.innerHTML = `<input class="fill-input" type="text" maxlength="255" aria-label="Nama"><button class="link-button" type="button" data-list-remove aria-label="Hapus nama">×</button>`;
+        item.querySelector('input').name = `answers[${name}][${next}]`;
+        item.querySelector('input').placeholder = items.querySelector('input')?.placeholder || 'Tulis nama';
+        item.querySelector('input').value = value;
+        items.append(item);
+        updateListButton(list);
+        return item;
+    }
+
+    function updateListButton(list) {
+        list.querySelector('[data-list-add]').disabled = list.querySelectorAll('[data-list-items] li').length >= Number(list.dataset.max || 10);
+    }
+
+    form.querySelectorAll('[data-list]').forEach(list => {
+        list.dataset.nextIndex = String(list.querySelectorAll('[data-list-items] li').length);
+        updateListButton(list);
+    });
+
+    form.addEventListener('click', event => {
+        const add = event.target.closest('[data-list-add]');
+        const remove = event.target.closest('[data-list-remove]');
+        if (!add && !remove) return;
+        const list = event.target.closest('[data-list]');
+        if (add) listItem(list).querySelector('input').focus();
+        if (remove) {
+            if (list.querySelectorAll('[data-list-items] li').length > 1) remove.closest('li').remove();
+            else remove.closest('li').querySelector('input').value = '';
+            updateListButton(list);
+        }
+        applyLogic();
+        scheduleDraft();
+    });
+    form.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' || !event.target.closest('[data-list-items]')) return;
+        event.preventDefault();
+        const list = event.target.closest('[data-list]');
+        if (!list.querySelector('[data-list-add]').disabled) listItem(list).querySelector('input').focus();
+    });
+
     // ── Validation ─────────────────────────────────────────────────────────
 
     function setError(question, message) {
@@ -734,6 +880,9 @@
         }
         if (type === 'table') {
             return required && !isAnswered(answerOf(question)) ? 'Isi minimal satu baris.' : '';
+        }
+        if (type === 'list') {
+            return required && !isAnswered(answerOf(question)) ? 'Isi minimal satu nama.' : '';
         }
         if (type === 'matrix') {
             const unanswered = [...question.querySelectorAll('[data-matrix-row]')].some(row => !row.querySelector('input:checked'));
@@ -822,7 +971,11 @@
             for (let index = 0; index < Math.min(map.size, Number(table.dataset.maxRows)); index++) addRow(table);
         });
 
-        entries.forEach(([name, value]) => {
+        const applyEntries = () => entries.forEach(([name, value]) => {
+            // A list needs as many inputs as it had names.
+            const listMatch = name.match(/^answers\[([^\]]+)\]\[(\d+)\]$/);
+            const list = listMatch && form.querySelector(`.fill-question[data-question-id="${CSS.escape(listMatch[1])}"]:not([data-row]) [data-list]`);
+            if (list && !form.querySelector(`[name="${name}"]`)) listItem(list);
             form.querySelectorAll(`[name="${name.replace(/["\\]/g, '\\$&')}"]`).forEach(field => {
                 if (field.type === 'radio' || field.type === 'checkbox') {
                     if (field.value === value) field.checked = true;
@@ -831,6 +984,10 @@
                 }
             });
         });
+        applyEntries();
+        // Repeating rows appear once their source answers are back; fill them in a second pass.
+        applyLogic();
+        applyEntries();
         form.querySelectorAll('.code-input').forEach(syncCodeDigits);
         form.querySelectorAll('[data-currency]').forEach(formatRupiah);
         form.querySelectorAll('[data-slider]').forEach(syncSlider);

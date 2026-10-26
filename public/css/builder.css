@@ -386,3 +386,7 @@ body{background:#fff}.topbar,.page-intro,.toolbox,.settings-panel,.editor-toolba
 .setting-pair{display:grid;grid-template-columns:1fr 90px;gap:6px}
 .mono-input{font-family:var(--mono)}
 .tag-picker{margin-top:6px;color:#2456a6}
+.roster-chip{flex:none;padding:2px 7px;border-radius:10px;background:#fdf1e4;color:#a65a1f;font-family:var(--mono);font-size:8px;letter-spacing:.3px;white-space:nowrap}
+.form-block.is-roster{box-shadow:inset 3px 0 0 #e8a15b}
+.list-preview{display:flex;flex-direction:column;gap:3px;font-size:9px;color:#a4b2af}
+.list-preview b{color:#2b7a6f;font-weight:600}

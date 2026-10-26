@@ -88,6 +88,7 @@
             mask: '',
             ...(type === 'calc' ? { formula: '', format: 'number', decimals: 0 } : {}),
             ...(type === 'file' ? { file: { accept: 'image', max_mb: 5 } } : {}),
+            ...(type === 'list' ? { list: { max: 10 } } : {}),
             ...(type === 'region' ? { region: defaultRegion(), label: 'Identitas wilayah' } : {}),
             ...(type === 'table' ? { table: defaultTable() } : {}),
             ...(rangeTypes.includes(type) ? { range: { ...config.rangeDefaults[type] } } : {}),
@@ -97,7 +98,7 @@
     }
 
     function makeBlock(title = '', questions = []) {
-        return { id: makeId('b'), title, layout: 'full', orientation: '', questions, condition: null };
+        return { id: makeId('b'), title, layout: 'full', orientation: '', repeat: null, questions, condition: null };
     }
 
     function normalizeRegion(region) {
@@ -249,6 +250,7 @@
                 max_mb: clamp(question.file?.max_mb, 1, config.maxFileMb, 5),
             };
         }
+        if (question.type === 'list') normalized.list = { max: clamp(question.list?.max, 1, config.maxListItems, 10) };
         if (question.type === 'region') normalized.region = normalizeRegion(question.region);
         if (question.type === 'table') normalized.table = normalizeTable(question.table);
         if (rangeTypes.includes(question.type)) normalized.range = normalizeRange(question.type, question.range);
@@ -265,6 +267,11 @@
                 title: String(block?.title ?? ''),
                 layout: block?.layout === 'half' ? 'half' : 'full',
                 orientation: ['portrait', 'landscape'].includes(block?.orientation) ? block.orientation : '',
+                repeat: block?.repeat?.source ? {
+                    source: String(block.repeat.source),
+                    max: clamp(block.repeat.max, 1, config.maxRosterRows, 20),
+                    print_rows: clamp(block.repeat.print_rows, 1, 30, 3),
+                } : null,
                 condition: normalizeCondition(block?.condition),
                 questions: (Array.isArray(block?.questions) ? block.questions : [])
                     .filter(question => config.questionTypes[question?.type])
@@ -435,8 +442,10 @@
         if (question.type === 'calc') {
             const problem = formulaSyntaxProblem(question.formula);
             if (problem) return `Rumus ${problem}.`;
-            if (tagIds(question.formula).some(id => !earlierIds.includes(id))) return 'Rumus memakai tag jawaban dari pertanyaan yang tidak ada sebelumnya.';
+            const formulaIds = earlierQuestions('question', question.id, false, true).map(item => item.question.id);
+            if (tagIds(question.formula).some(id => !formulaIds.includes(id))) return 'Rumus memakai tag jawaban dari pertanyaan yang tidak ada sebelumnya.';
         }
+        if (inRoster(question) && !config.rosterTypes.includes(question.type)) return 'Jenis isian ini tidak dapat dipakai di blok berulang.';
         if ([...tagIds(question.label), ...tagIds(question.description)].some(id => !earlierIds.includes(id))) return 'Teks memakai tag jawaban dari pertanyaan yang tidak ada sebelumnya.';
         if (question.options_from) {
             const source = findQuestion(question.options_from)?.question;
@@ -447,10 +456,12 @@
     }
 
     function tagPicker(target, question, label = 'Sisipkan jawaban…') {
-        const available = earlierQuestions('question', question.id);
-        if (!available.length) return '';
+        const available = earlierQuestions('question', question.id, false, target === 'formula');
+        const rowToken = target !== 'formula' && inRoster(question);
+        if (!available.length && !rowToken) return '';
         return `<select class="setting-select tag-picker" data-insert-tag="${target}" aria-label="Sisipkan tag jawaban">
             <option value="">${escapeHtml(label)}</option>
+            ${rowToken ? '<option value="@baris">↻ Nama/nomor rincian (baris)</option>' : ''}
             ${available.map(item => `<option value="${escapeHtml(item.number)}">@${escapeHtml(questionLabel(item))}</option>`).join('')}
         </select>`;
     }
@@ -458,20 +469,45 @@
     // ── Logic ──────────────────────────────────────────────────────────────
 
     // Questions a rule may refer to: earlier, logic-capable ones (and the question itself for consistency checks).
-    function earlierQuestions(kind, id, includeSelf = false) {
+    // Rules see earlier questions outside repeating blocks, plus earlier ones in their own repeating
+    // block (answered per row). Formulas may also total another repeating block's rows, or count a list.
+    function earlierQuestions(kind, id, includeSelf = false, forFormula = false) {
+        const ownBlock = kind === 'block' ? null : findQuestion(id)?.block;
         const earlier = [];
         for (const block of blocks) {
             if (kind === 'block' && block.id === id) return earlier;
+            const otherRoster = Boolean(block.repeat?.source) && block !== ownBlock;
             for (const question of block.questions) {
-                const usable = !nonLogicTypes.includes(question.type);
+                const usable = forFormula ? !['region', 'table', 'matrix', 'info'].includes(question.type) : !nonLogicTypes.includes(question.type);
                 if (kind === 'question' && question.id === id) {
                     if (includeSelf && usable) earlier.push({ question, number: numbers.get(question.id) });
                     return earlier;
                 }
-                if (usable) earlier.push({ question, number: numbers.get(question.id) });
+                if (usable && (!otherRoster || forFormula)) earlier.push({ question, number: numbers.get(question.id) });
             }
         }
         return earlier;
+    }
+
+    function inRoster(question) {
+        return Boolean(findQuestion(question.id)?.block.repeat?.source);
+    }
+
+    // Questions a block can repeat for: earlier numbers, multiple choices and lists outside repeating blocks.
+    function rosterSources(block) {
+        const sources = [];
+        for (const candidate of blocks) {
+            if (candidate === block) break;
+            if (candidate.repeat?.source) continue;
+            candidate.questions.filter(question => config.rosterSourceTypes.includes(question.type)).forEach(question => sources.push({ question, number: numbers.get(question.id) }));
+        }
+        return sources;
+    }
+
+    function rosterProblem(block) {
+        if (!block.repeat?.source) return '';
+        if (!rosterSources(block).some(item => item.question.id === block.repeat.source)) return 'Blok berulang harus diulang per pertanyaan Angka, Pilihan lebih dari satu, atau Daftar nama sebelumnya.';
+        return '';
     }
 
     function questionLabel(item) {
@@ -613,6 +649,7 @@
         const removed = new Set(questionIds);
         blocks.forEach(block => {
             if (removed.has(block.condition?.question_id)) block.condition = null;
+            if (removed.has(block.repeat?.source)) block.repeat = null;
             block.questions.forEach(question => {
                 if (question.logic && !pruneGroup(question.logic.conditions, removed).rules.length) question.logic = null;
                 question.validation.checks = question.validation.checks.filter(check => pruneGroup(check.conditions, removed).rules.length > 0);
@@ -896,6 +933,7 @@
             case 'slider': return `<div class="range-preview is-slider">${question.range.min}<b></b>${question.range.max}</div>`;
             case 'matrix': return matrixPreview(question);
             case 'signature': return '<div class="sign-preview">Kotak tanda tangan responden</div>';
+            case 'list': return '<div class="list-preview"><span>1. ____________</span><span>2. ____________</span><b>+ Tambah nama</b></div>';
             case 'time': return `<div class="answer-line">${escapeHtml(question.prefill || 'Jam __ : __')}</div>`;
             case 'calc': return `<div class="dynamic-preview is-calc"><b>ƒx</b> ${escapeHtml(tagsToNumbers(question.formula) || 'Tulis rumus di panel kanan, mis. {{101}} + {{102}}')}</div>`;
             case 'location': return '<div class="answer-line">📍 lintang, bujur — tombol “Ambil lokasi saat ini”</div>';
@@ -957,13 +995,14 @@
 
     function blockSection(block, blockIndex) {
         const roman = toRoman(blockIndex + 1);
-        const classes = ['form-block', block.layout === 'half' && 'is-half', isSelected('block', block.id) && 'is-selected'].filter(Boolean).join(' ');
+        const classes = ['form-block', block.layout === 'half' && 'is-half', block.repeat && 'is-roster', isSelected('block', block.id) && 'is-selected'].filter(Boolean).join(' ');
         return `
             <section class="${classes}" data-block-id="${escapeHtml(block.id)}">
                 <header class="block-head">
                     <span class="drag-handle" data-drag-handle title="Seret untuk memindahkan blok">⠿</span>
                     <span class="block-prefix">BLOK ${roman}.</span>
                     <input class="block-title" type="text" maxlength="160" value="${escapeHtml(block.title)}" placeholder="JUDUL BLOK" data-field="block-title" aria-label="Judul blok ${roman}">
+                    ${block.repeat ? `<span class="roster-chip" title="Blok diulang untuk setiap jawaban pertanyaan ${escapeHtml(numbers.get(block.repeat.source) ?? '?')}">↻ per ${escapeHtml(numbers.get(block.repeat.source) ?? '?')}</span>` : ''}
                     ${block.orientation ? `<span class="orientation-chip" title="Blok ini dicetak pada halaman ${block.orientation === 'landscape' ? 'lanskap' : 'potret'}">${block.orientation === 'landscape' ? '▭ Lanskap' : '▯ Potret'}</span>` : ''}
                     <span class="logic-slot">${logicBadge('block', block.id)}</span>
                     <button class="question-remove" type="button" data-action="remove-block" aria-label="Hapus blok ${roman}">×</button>
@@ -1255,6 +1294,21 @@
                     </div>
                 </div>
                 <p class="setting-note">Blok dengan orientasi berbeda dicetak mulai halaman baru, jadi satu kuesioner bisa berisi halaman potret dan lanskap.</p>
+                <div class="type-settings">
+                    <div class="setting-label"><span>Rincian berulang (roster)</span><span class="setting-value">${block.repeat ? 'AKTIF' : 'TIDAK'}</span></div>
+                    <label class="setting-field"><span>Ulangi blok ini</span>
+                        <select class="setting-select" data-setting="repeat-source">
+                            <option value="">Tidak diulang</option>
+                            ${rosterSources(block).map(item => `<option value="${escapeHtml(item.question.id)}" ${item.question.id === block.repeat?.source ? 'selected' : ''}>Per jawaban ${escapeHtml(questionLabel(item))}</option>`).join('')}
+                        </select>
+                    </label>
+                    ${block.repeat ? `<div class="setting-pair">
+                        <label class="setting-field"><span>Maks. rincian</span><input class="setting-select" type="number" min="1" max="${config.maxRosterRows}" value="${block.repeat.max}" data-setting="repeat-max"></label>
+                        <label class="setting-field"><span>Baris cetak</span><input class="setting-select" type="number" min="1" max="30" value="${block.repeat.print_rows}" data-setting="repeat-print"></label>
+                    </div>` : ''}
+                    <p class="setting-note">${rosterSources(block).length ? 'Pertanyaan blok ini diisi sekali untuk setiap jawaban: per angka (mis. jumlah ART = 3 → 3 rincian), per pilihan yang dicentang, atau per nama di Daftar nama. Sisipkan {{@baris}} di teks untuk menampilkan nama rinciannya.' : 'Tambahkan pertanyaan Angka, Pilihan lebih dari satu, atau Daftar nama di blok sebelumnya untuk menjadikan blok ini berulang.'}</p>
+                    ${rosterProblem(block) ? `<p class="setting-note is-warning">${escapeHtml(rosterProblem(block))}</p>` : ''}
+                </div>
                 <label class="setting-field"><span>Tambah isian ke blok ini</span>
                     <select class="setting-select" data-setting="add-question">
                         <option value="">Pilih jenis…</option>
@@ -1624,6 +1678,18 @@
         if (setting === 'add-question') {
             const found = selected?.kind === 'block' && findBlock(selected.id);
             if (found && target.value) addQuestion(target.value, found.block);
+            return;
+        }
+        if (setting === 'repeat-source' || setting === 'repeat-max' || setting === 'repeat-print') {
+            const found = selected?.kind === 'block' && findBlock(selected.id);
+            if (!found) return;
+            const { block } = found;
+            if (setting === 'repeat-source') block.repeat = target.value ? { source: target.value, max: block.repeat?.max ?? 20, print_rows: block.repeat?.print_rows ?? 3 } : null;
+            if (setting === 'repeat-max' && block.repeat) block.repeat.max = clamp(target.value, 1, config.maxRosterRows, 20);
+            if (setting === 'repeat-print' && block.repeat) block.repeat.print_rows = clamp(target.value, 1, 30, 3);
+            // Questions of other blocks may no longer use this block's questions in their rules.
+            if (setting === 'repeat-source') clearConditionsOn([]);
+            render();
             return;
         }
         if (setting === 'orientation') {
@@ -2124,7 +2190,7 @@
         if (untitledBlock) return { message: 'Judul blok belum diisi.', kind: 'block', id: untitledBlock.id, selector: `[data-block-id="${CSS.escape(untitledBlock.id)}"] .block-title` };
         if (!numbers.size) return { message: 'Tambahkan minimal satu pertanyaan.' };
         for (const block of blocks) {
-            const blockProblem = conditionProblem('block', block.id);
+            const blockProblem = conditionProblem('block', block.id) || rosterProblem(block);
             if (blockProblem) return { message: blockProblem, kind: 'block', id: block.id, selector: `[data-block-id="${CSS.escape(block.id)}"] .block-title` };
             for (const question of block.questions) {
                 const problem = questionProblem(question);
