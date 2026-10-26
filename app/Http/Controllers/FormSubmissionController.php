@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\SubmitSurveyResponseRequest;
 use App\Models\Assignment;
 use App\Models\Survey;
+use App\Support\GoogleDrive;
 use App\Support\Lookup;
 use App\Support\Webhook;
 use Illuminate\Http\JsonResponse;
@@ -44,6 +45,7 @@ class FormSubmissionController extends Controller
         $response = $survey->responses()->create(['answers' => $request->answers(), 'flags' => $request->flags(), 'source' => 'form']);
         $request->assignment()?->update(['response_id' => $response->id]);
         Webhook::responseCreated($survey, $response);
+        GoogleDrive::responseCreated($survey, $response);
 
         return redirect()->route('form.thanks', $survey);
     }

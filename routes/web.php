@@ -4,6 +4,7 @@ use App\Http\Controllers\ApiAccessController;
 use App\Http\Controllers\AssignmentController;
 use App\Http\Controllers\DataValidationController;
 use App\Http\Controllers\FormSubmissionController;
+use App\Http\Controllers\GoogleDriveController;
 use App\Http\Controllers\LogoController;
 use App\Http\Controllers\PublishedSurveyController;
 use App\Http\Controllers\ReferenceListController;
@@ -44,6 +45,10 @@ Route::middleware('admin.local')->group(function (): void {
     Route::get('/akses-api', [ApiAccessController::class, 'index'])->name('api-access.index');
     Route::post('/akses-api', [ApiAccessController::class, 'store'])->name('api-access.store');
     Route::delete('/akses-api/{token}', [ApiAccessController::class, 'destroy'])->name('api-access.destroy');
+    Route::get('/surveys/{survey}/google-drive', [GoogleDriveController::class, 'show'])->name('google-drive.show');
+    Route::put('/surveys/{survey}/google-drive', [GoogleDriveController::class, 'update'])->name('google-drive.update');
+    Route::post('/surveys/{survey}/google-drive/kirim', [GoogleDriveController::class, 'sendAll'])->name('google-drive.send-all');
+    Route::post('/surveys/{survey}/responses/{response}/google-drive', [GoogleDriveController::class, 'send'])->name('google-drive.send')->scopeBindings();
 });
 
 // Respondents: fill in a published survey by its public link.

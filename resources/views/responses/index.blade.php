@@ -7,6 +7,7 @@
     <a class="button button-ghost" href="{{ route('surveys.print', $survey) }}" target="_blank" rel="noopener">Cetak formulir</a>
     <a class="button button-ghost" href="{{ route('surveys.responses.listing', $survey) }}" target="_blank" rel="noopener">Tampilan listing</a>
     <a class="button button-ghost" href="{{ route('assignments.index', $survey) }}" title="Tautan pribadi berpredata per responden">Penugasan</a>
+    <a class="button button-ghost" href="{{ route('google-drive.show', $survey) }}" title="Salin berkas dan rekap respons ke folder Google Drive">Google Drive</a>
     <a class="button button-ghost" href="{{ route('surveys.export-json', $survey) }}" title="Struktur, aturan validasi, dan semua respons">Ekspor JSON</a>
     <a @class(['button', 'button-primary', 'is-disabled' => $responses->isEmpty()]) href="{{ route('surveys.responses.export', $survey) }}" @if ($responses->isEmpty()) aria-disabled="true" @endif>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>

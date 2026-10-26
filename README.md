@@ -60,6 +60,7 @@ php artisan test
 - Ekspor/impor JSON dan validasi data memakai JSON sebagai template aturan
 - Pengaturan per pertanyaan (Opsi / Logika / Validasi): wajib, tersembunyi, nonaktif, logika DAN/ATAU, pemeriksaan konsistensi galat/peringatan, pembanding rentang, tag jawaban `@`
 - Isian dinamis ala FormGear/FASIH: **Hitungan (rumus)** seperti `{{201}} + {{202}}`, `round()`, `years()`, `sum()`; tag jawaban `{{101}}` di teks pertanyaan; opsi dari jawaban pertanyaan lain; opsi "Lainnya (sebutkan)"; masking (`99.99.999`); jam; lokasi GPS; unggah foto/berkas
+- Salinan ke Google Drive per kuesioner (menu Respons → Google Drive): foto, berkas, dan tanda tangan masuk ke folder Drive per tanggal, dan satu baris per respons ke spreadsheet rekap, lewat Apps Script yang dipasang pemilik folder. Pengiriman berjalan di antrean, jadi jalankan juga `php artisan queue:work`
 - Unggahan dikompres otomatis: foto diperkecil (sisi terpanjang 1920 px), DOCX/XLSX dipadatkan ulang, PDF lewat Ghostscript bila terpasang (`GHOSTSCRIPT_PATH` di `.env`). Dokumen bertanda tangan elektronik (PDF PAdES/TTE, tanda tangan digital Office) disimpan asli tanpa diubah
 - **Rincian berulang (roster)**: blok diulang per jumlah, per pilihan yang dicentang, atau per nama di **Daftar nama**; logika, validasi, dan rumus berjalan per baris; `{{@baris}}` menampilkan nama rincian
 - **Data referensi** (CSV) untuk daftar pilihan, termasuk pilihan berjenjang (kecamatan → desa), atau opsi dari API luar

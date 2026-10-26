@@ -265,6 +265,12 @@
                         <input class="setting-select" type="url" name="settings[webhook_url]" maxlength="500" placeholder="https://aplikasi-anda/terima-respons" value="{{ old('settings.webhook_url', $settings['webhook_url'] ?? '') }}">
                     </label>
                     <p class="setting-note">Setiap respons baru dikirim sebagai JSON (POST) ke alamat ini, ditandatangani dengan header X-Ruang-Signature. Lihat menu API.</p>
+                    <label class="setting-field"><span>Google Drive <small>(Web App Apps Script, opsional)</small></span>
+                        <input class="setting-select" type="url" name="settings[drive_url]" maxlength="500" placeholder="https://script.google.com/macros/s/…/exec" value="{{ old('settings.drive_url', $settings['drive_url'] ?? '') }}">
+                    </label>
+                    <p class="setting-note">Foto, berkas, dan tanda tangan setiap respons disalin ke folder Drive, dan satu baris ditambahkan ke spreadsheet rekap.
+                        @unless ($isNew) <a href="{{ route('google-drive.show', $survey) }}">Panduan menyambungkan Google Drive →</a> @endunless
+                    </p>
                 </div>
                 <div class="setting-block">
                     <div class="setting-label"><span>Ukuran kertas cetak</span><span class="setting-value" id="paper-dimension">210 × 297 MM</span></div>

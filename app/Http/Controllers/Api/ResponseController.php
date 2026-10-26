@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Survey;
 use App\Models\SurveyResponse;
+use App\Support\GoogleDrive;
 use App\Support\ResponseValidator;
 use App\Support\SurveyJson;
 use App\Support\Webhook;
@@ -146,6 +147,7 @@ class ResponseController extends Controller
 
         $result['assignment']?->update(['response_id' => $response->id]);
         Webhook::responseCreated($survey, $response);
+        GoogleDrive::responseCreated($survey, $response);
 
         return $response->load('assignment');
     }

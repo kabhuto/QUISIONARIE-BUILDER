@@ -6,6 +6,7 @@ use App\Models\ReferenceList;
 use App\Models\Survey;
 use App\Support\FieldValidation;
 use App\Support\Formula;
+use App\Support\GoogleDrive;
 use App\Support\Lookup;
 use App\Support\SurveyLogic;
 use Illuminate\Foundation\Http\FormRequest;
@@ -73,6 +74,7 @@ class StoreSurveyRequest extends FormRequest
             'settings.numbering' => ['required', Rule::in(array_keys(Survey::NUMBERING_STYLES))],
             'settings.thank_you_message' => ['nullable', 'string', 'max:500'],
             'settings.webhook_url' => ['nullable', 'url:http,https', 'max:500'],
+            'settings.drive_url' => ['nullable', 'max:500', 'regex:'.GoogleDrive::WEB_APP_PATTERN],
             'settings.confidential' => ['required', 'boolean'],
             'settings.sheet_label' => ['nullable', 'string', 'max:60'],
             'settings.sheet_label_position' => ['nullable', Rule::in(array_keys(Survey::HEADER_SLOTS))],
@@ -598,6 +600,7 @@ class StoreSurveyRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'settings.drive_url.regex' => 'Alamat Google Drive harus alamat Web App Apps Script: https://script.google.com/macros/s/…/exec.',
             'blocks.required' => 'Tambahkan minimal satu blok.',
             'blocks.array' => 'Susunan blok tidak valid.',
             'blocks.min' => 'Tambahkan minimal satu blok.',
@@ -639,6 +642,7 @@ class StoreSurveyRequest extends FormRequest
                 'topline_label_position' => $settings['topline_label_position'] ?? 'left',
                 'form_code_position' => $settings['form_code_position'] ?? 'right',
                 'webhook_url' => trim((string) ($settings['webhook_url'] ?? '')),
+                'drive_url' => trim((string) ($settings['drive_url'] ?? '')),
             ],
             'header' => [
                 'align' => $this->validated('header.align') ?? 'center',

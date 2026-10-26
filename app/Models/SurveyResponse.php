@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['answers', 'flags', 'source'])]
+#[Fillable(['answers', 'flags', 'source', 'drive'])]
 class SurveyResponse extends Model
 {
     /**
@@ -21,6 +21,7 @@ class SurveyResponse extends Model
         return [
             'answers' => 'array',
             'flags' => 'array',
+            'drive' => 'array',
         ];
     }
 

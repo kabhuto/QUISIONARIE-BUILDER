@@ -18,7 +18,39 @@
 
     @php
         $confirmed = collect($response->flags['confirmed_warnings'] ?? [])->groupBy('question_id');
+        $drive = $response->drive;
+        $driveLinked = \App\Support\GoogleDrive::url($survey) !== '';
     @endphp
+
+    @if ($errors->has('drive'))
+        <div class="validation-alert" role="alert">{{ $errors->first('drive') }}</div>
+    @endif
+    @if ($drive || $driveLinked)
+        <div @class(['drive-status', 'is-sent' => ($drive['status'] ?? null) === 'sent', 'is-failed' => ($drive['status'] ?? null) === 'failed'])>
+            <strong>Google Drive:</strong>
+            @switch($drive['status'] ?? null)
+                @case('sent')
+                    tersalin {{ \Illuminate\Support\Carbon::parse($drive['sent_at'])->translatedFormat('d M Y, H:i') }}
+                    @if ($drive['folder_url'] ?? null) · <a href="{{ $drive['folder_url'] }}" target="_blank" rel="noopener">Folder berkas</a> @endif
+                    @if ($drive['sheet_url'] ?? null) · <a href="{{ $drive['sheet_url'] }}" target="_blank" rel="noopener">Folder rekap</a> @endif
+                    @break
+                @case('pending')
+                    menunggu dikirim (antrean)
+                    @break
+                @case('failed')
+                    gagal — {{ $drive['error'] ?? '' }}
+                    @break
+                @default
+                    belum disalin
+            @endswitch
+            @if ($driveLinked && ($drive['status'] ?? null) !== 'sent')
+                <form method="POST" action="{{ route('google-drive.send', [$survey, $response]) }}">
+                    @csrf
+                    <button class="link-button" type="submit">Kirim sekarang</button>
+                </form>
+            @endif
+        </div>
+    @endif
 
     @if ($confirmed->isNotEmpty())
         <div class="flag-summary" role="note">

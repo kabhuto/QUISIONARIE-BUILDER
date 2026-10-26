@@ -267,6 +267,7 @@ class Survey extends Model
         'topline_label_position' => 'left',
         'form_code_position' => 'right',
         'webhook_url' => '',
+        'drive_url' => '',
     ];
 
     public const DEFAULT_INTRO = [
