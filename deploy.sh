@@ -6,7 +6,8 @@ cd "$(dirname "$0")"
 
 composer install --no-dev --optimize-autoloader --no-interaction
 php artisan migrate --force
-[ -e public/storage ] || php artisan storage:link
+# Uploaded files are still served without the link (routes/web.php) if the hosting forbids symlinks.
+[ -e public/storage ] || php artisan storage:link || echo "storage:link gagal; berkas tetap disajikan lewat aplikasi."
 php artisan optimize:clear
 php artisan optimize
 

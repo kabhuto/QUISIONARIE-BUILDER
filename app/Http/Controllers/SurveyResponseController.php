@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Survey;
 use App\Models\SurveyResponse;
 use App\Support\SurveySummary;
+use App\Support\Xlsx;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SurveyResponseController extends Controller
@@ -32,6 +34,40 @@ class SurveyResponseController extends Controller
             'position' => $position,
             'numbers' => $survey->questionNumbers(),
         ]);
+    }
+
+    /**
+     * All responses as an Excel/Google Sheets workbook: one row per response, file answers and the
+     * detail page as clickable links, GPS accuracy next to each location.
+     */
+    public function exportXlsx(Survey $survey): BinaryFileResponse
+    {
+        $questions = $survey->questions();
+        $path = (string) tempnam(sys_get_temp_dir(), 'xlsx');
+        $position = 0;
+
+        Xlsx::write(
+            $path,
+            $survey->title,
+            ['No', 'Waktu kirim', ...array_map(fn (array $question): string => $question['number'].'. '.$question['text'], $questions), 'Detail respons'],
+            $survey->responses()->oldest()->lazy()->map(function (SurveyResponse $response) use ($survey, $questions, &$position): array {
+                return [
+                    ++$position,
+                    $response->created_at->timezone(config('app.timezone'))->format('Y-m-d H:i:s'),
+                    ...array_map(function (array $question) use ($response): string {
+                        $text = $response->displayAnswer($question);
+                        $accuracy = $response->answers[$question['id'].Survey::ACCURACY_SUFFIX] ?? null;
+
+                        return $question['type'] === 'location' && $text !== '' && is_numeric($accuracy) ? "{$text} (±{$accuracy} m)" : $text;
+                    }, $questions),
+                    route('surveys.responses.show', [$survey, $response]),
+                ];
+            }),
+        );
+
+        $filename = str($survey->title)->slug()->append('-respons-', now()->format('Ymd-His'), '.xlsx')->toString();
+
+        return response()->download($path, $filename, ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])->deleteFileAfterSend();
     }
 
     public function export(Survey $survey): StreamedResponse

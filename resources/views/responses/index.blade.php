@@ -9,9 +9,10 @@
     <a class="button button-ghost" href="{{ route('assignments.index', $survey) }}" title="Tautan pribadi berpredata per responden">Penugasan</a>
     <a class="button button-ghost" href="{{ route('google-drive.show', $survey) }}" title="Salin berkas dan rekap respons ke folder Google Drive">Google Drive</a>
     <a class="button button-ghost" href="{{ route('surveys.export-json', $survey) }}" title="Struktur, aturan validasi, dan semua respons">Ekspor JSON</a>
-    <a @class(['button', 'button-primary', 'is-disabled' => $responses->isEmpty()]) href="{{ route('surveys.responses.export', $survey) }}" @if ($responses->isEmpty()) aria-disabled="true" @endif>
+    <a @class(['button', 'button-ghost', 'is-disabled' => $responses->isEmpty()]) href="{{ route('surveys.responses.export', $survey) }}" @if ($responses->isEmpty()) aria-disabled="true" @endif>Ekspor CSV</a>
+    <a @class(['button', 'button-primary', 'is-disabled' => $responses->isEmpty()]) href="{{ route('surveys.responses.export-xlsx', $survey) }}" title="Buka di Excel atau Google Spreadsheet" @if ($responses->isEmpty()) aria-disabled="true" @endif>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>
-        Ekspor CSV
+        Ekspor Spreadsheet
     </a>
 @endsection
 

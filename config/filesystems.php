@@ -33,7 +33,8 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Off: its signed "/storage/{path}" route would shadow the public uploads fallback in routes/web.php.
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],

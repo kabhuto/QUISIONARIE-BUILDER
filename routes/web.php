@@ -14,6 +14,7 @@ use App\Http\Controllers\SurveyJsonController;
 use App\Http\Controllers\SurveyPrintController;
 use App\Http\Controllers\SurveyResponseController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 
 // Admin sign-in.
 Route::get('/masuk', [LoginController::class, 'create'])->name('login');
@@ -39,6 +40,7 @@ Route::middleware('admin')->group(function (): void {
     Route::get('/logos', [LogoController::class, 'index'])->name('logos.index');
     Route::post('/logos', [LogoController::class, 'store'])->name('logos.store');
     Route::get('/surveys/{survey}/responses/export', [SurveyResponseController::class, 'export'])->name('surveys.responses.export');
+    Route::get('/surveys/{survey}/responses/export.xlsx', [SurveyResponseController::class, 'exportXlsx'])->name('surveys.responses.export-xlsx');
     Route::resource('surveys.responses', SurveyResponseController::class)->only(['index', 'show'])->scoped(['response' => 'id']);
     Route::get('/surveys/{survey}/penugasan', [AssignmentController::class, 'index'])->name('assignments.index');
     Route::post('/surveys/{survey}/penugasan', [AssignmentController::class, 'store'])->name('assignments.store');
@@ -56,6 +58,14 @@ Route::middleware('admin')->group(function (): void {
     Route::post('/surveys/{survey}/google-drive/kirim', [GoogleDriveController::class, 'sendAll'])->name('google-drive.send-all');
     Route::post('/surveys/{survey}/responses/{response}/google-drive', [GoogleDriveController::class, 'send'])->name('google-drive.send')->scopeBindings();
 });
+
+// Uploaded logos and answer files. Normally the web server serves them through the public/storage
+// link; on hostings where that link cannot be made (symlink disabled) the request ends up here.
+Route::get('/storage/{path}', function (string $path) {
+    abort_unless(! str_contains($path, '..') && Storage::disk('public')->exists($path), 404);
+
+    return Storage::disk('public')->response($path, null, ['Cache-Control' => 'public, max-age=604800']);
+})->where('path', '(logos|uploads)/.+')->name('storage.fallback');
 
 // Respondents: fill in a published survey by its public link.
 Route::get('/f/{survey:slug}', [FormSubmissionController::class, 'create'])->name('form.create');
