@@ -17,8 +17,9 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
-        // Safe to run again (e.g. `composer run setup` twice): only create the test user once.
-        if (! User::query()->where('email', 'test@example.com')->exists()) {
+        // Safe to run again (e.g. `composer run setup` twice): only create the test user once. Never on
+        // a server: its well-known password would open the admin pages to anyone.
+        if (app()->environment('local', 'testing') && ! User::query()->where('email', 'test@example.com')->exists()) {
             User::factory()->create([
                 'name' => 'Test User',
                 'email' => 'test@example.com',
