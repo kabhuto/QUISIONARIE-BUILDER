@@ -30,7 +30,8 @@ bash deploy.sh                 # composer install, migrasi, storage link, cache
 php artisan admin:buat email@anda.com --name="Humas BPS"   # buat akun admin
 ```
 
-Opsional, untuk contoh kuesioner: `php artisan db:seed --class=DummySurveySeeder --force`.
+Pasang kuesioner siap pakai (**Absensi Harian Peserta Magang**): `php artisan db:seed --class=ReadySurveySeeder --force`.
+Opsional, contoh kuesioner dummy: `php artisan db:seed --class=DummySurveySeeder --force`.
 
 Buka `https://<domain-anda>/masuk` dan masuk dengan akun admin tadi.
 

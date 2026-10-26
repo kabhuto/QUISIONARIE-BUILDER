@@ -1,0 +1,867 @@
+{
+    "format": "ruang-kuesioner",
+    "version": 1,
+    "exported_at": "2026-10-26T09:50:09+00:00",
+    "survey": {
+        "title": "ABSENSI HARIAN PESERTA MAGANG",
+        "form_code": "ABS-MAGANG",
+        "subtitle": "BPS Kabupaten Bangkalan",
+        "activity": "Absensi Magang 2026",
+        "settings": {
+            "paper_size": "A4",
+            "orientation": "portrait",
+            "period_type": "none",
+            "period_value": null,
+            "theme": "blue",
+            "numbering": "block",
+            "thank_you_message": "Terima kasih, absensi Anda sudah tercatat.",
+            "confidential": true,
+            "sheet_label": "RAHASIA",
+            "sheet_label_position": "left",
+            "topline_label": "FORMULIR PENDATAAN",
+            "topline_label_position": "left",
+            "form_code_position": "right",
+            "webhook_url": "",
+            "drive_url": ""
+        },
+        "header": {
+            "align": "center",
+            "items": []
+        },
+        "intro": {
+            "text": "Isi absensi setiap hari kerja. Aktifkan GPS di perangkat Anda agar lokasi absen dapat direkam.",
+            "help_title": "",
+            "help_org": "Badan Pusat Statistik",
+            "help_phone": "",
+            "help_email": "",
+            "notice": "",
+            "guide": "Isi blok secara berurutan, atau klik nama blok di panel sebelah kiri untuk langsung menuju blok tertentu.\r\nJawaban tersimpan sementara di perangkat ini sehingga pengisian dapat dilanjutkan kembali."
+        },
+        "blocks": [
+            {
+                "id": "b-identitas",
+                "title": "IDENTITAS DAN KEHADIRAN",
+                "layout": "full",
+                "orientation": "",
+                "repeat": null,
+                "condition": null,
+                "questions": [
+                    {
+                        "id": "q-nama",
+                        "type": "short",
+                        "label": "Nama lengkap",
+                        "description": "",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": false,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "1/2",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": null,
+                        "validation": {
+                            "rules": [
+                                {
+                                    "type": "min_length",
+                                    "value": "3"
+                                }
+                            ],
+                            "message": "",
+                            "checks": []
+                        }
+                    },
+                    {
+                        "id": "q-tanggal",
+                        "type": "date",
+                        "label": "Tanggal absen",
+                        "description": "",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": false,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "1/2",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": null,
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        }
+                    },
+                    {
+                        "id": "q-lokasi",
+                        "type": "location",
+                        "label": "Lokasi absen (tagging)",
+                        "description": "Tekan tombol untuk merekam titik lokasi Anda saat ini. Akurasi GPS yang diterima sampai 100 m.",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": false,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": null,
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        },
+                        "location": {
+                            "max_accuracy": 100
+                        }
+                    },
+                    {
+                        "id": "q-status",
+                        "type": "single",
+                        "label": "Status kehadiran",
+                        "description": "",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [
+                            "Masuk",
+                            "Tidak masuk"
+                        ],
+                        "hidden": false,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": null,
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        }
+                    }
+                ]
+            },
+            {
+                "id": "b-kegiatan",
+                "title": "KEGIATAN HARI INI",
+                "layout": "full",
+                "orientation": "",
+                "repeat": null,
+                "condition": {
+                    "question_id": "q-status",
+                    "operator": "equals",
+                    "value": "Masuk"
+                },
+                "questions": [
+                    {
+                        "id": "q-kegiatan",
+                        "type": "long",
+                        "label": "Kegiatan yang dilakukan",
+                        "description": "Tuliskan kegiatan {{q-nama}} pada hari ini.",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": false,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": null,
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        }
+                    },
+                    {
+                        "id": "q-bk-jenis",
+                        "type": "multiple",
+                        "label": "Kirim bukti kegiatan lewat",
+                        "description": "Centang satu atau lebih, lalu isi buktinya di bawah.",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [
+                            "Foto",
+                            "Link",
+                            "File"
+                        ],
+                        "hidden": false,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": null,
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        }
+                    },
+                    {
+                        "id": "q-bk-foto",
+                        "type": "file",
+                        "label": "Foto bukti kegiatan",
+                        "description": "",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": true,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": {
+                            "conditions": {
+                                "operator": "and",
+                                "rules": [
+                                    {
+                                        "question_id": "q-bk-jenis",
+                                        "operator": "contains",
+                                        "value": "Foto"
+                                    }
+                                ]
+                            },
+                            "actions": [
+                                "show"
+                            ]
+                        },
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        },
+                        "file": {
+                            "accept": "image",
+                            "max_mb": 5
+                        }
+                    },
+                    {
+                        "id": "q-bk-link",
+                        "type": "url",
+                        "label": "Link bukti kegiatan",
+                        "description": "Contoh: tautan Google Drive, dokumen, atau unggahan media sosial.",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": true,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "https://",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": {
+                            "conditions": {
+                                "operator": "and",
+                                "rules": [
+                                    {
+                                        "question_id": "q-bk-jenis",
+                                        "operator": "contains",
+                                        "value": "Link"
+                                    }
+                                ]
+                            },
+                            "actions": [
+                                "show"
+                            ]
+                        },
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        }
+                    },
+                    {
+                        "id": "q-bk-file",
+                        "type": "file",
+                        "label": "File bukti kegiatan",
+                        "description": "PDF, Word, atau Excel.",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": true,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": {
+                            "conditions": {
+                                "operator": "and",
+                                "rules": [
+                                    {
+                                        "question_id": "q-bk-jenis",
+                                        "operator": "contains",
+                                        "value": "File"
+                                    }
+                                ]
+                            },
+                            "actions": [
+                                "show"
+                            ]
+                        },
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        },
+                        "file": {
+                            "accept": "document",
+                            "max_mb": 10
+                        }
+                    }
+                ]
+            },
+            {
+                "id": "b-izin",
+                "title": "KETERANGAN TIDAK MASUK",
+                "layout": "full",
+                "orientation": "",
+                "repeat": null,
+                "condition": {
+                    "question_id": "q-status",
+                    "operator": "equals",
+                    "value": "Tidak masuk"
+                },
+                "questions": [
+                    {
+                        "id": "q-alasan",
+                        "type": "single",
+                        "label": "Alasan tidak masuk",
+                        "description": "",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [
+                            "Sakit",
+                            "Izin keperluan keluarga",
+                            "Izin kegiatan kampus"
+                        ],
+                        "hidden": false,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": true,
+                        "other_label": "Lainnya, sebutkan",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": null,
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        }
+                    },
+                    {
+                        "id": "q-alasan-ket",
+                        "type": "long",
+                        "label": "Keterangan",
+                        "description": "Jelaskan secara singkat.",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": false,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": null,
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        }
+                    },
+                    {
+                        "id": "q-bp-jenis",
+                        "type": "multiple",
+                        "label": "Kirim bukti pendukung lewat",
+                        "description": "Centang satu atau lebih, lalu isi buktinya di bawah.",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [
+                            "Foto",
+                            "Link",
+                            "File"
+                        ],
+                        "hidden": false,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": null,
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        }
+                    },
+                    {
+                        "id": "q-bp-foto",
+                        "type": "file",
+                        "label": "Foto bukti pendukung",
+                        "description": "",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": true,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": {
+                            "conditions": {
+                                "operator": "and",
+                                "rules": [
+                                    {
+                                        "question_id": "q-bp-jenis",
+                                        "operator": "contains",
+                                        "value": "Foto"
+                                    }
+                                ]
+                            },
+                            "actions": [
+                                "show"
+                            ]
+                        },
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        },
+                        "file": {
+                            "accept": "image",
+                            "max_mb": 5
+                        }
+                    },
+                    {
+                        "id": "q-bp-link",
+                        "type": "url",
+                        "label": "Link bukti pendukung",
+                        "description": "Contoh: tautan Google Drive, dokumen, atau unggahan media sosial.",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": true,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "https://",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": {
+                            "conditions": {
+                                "operator": "and",
+                                "rules": [
+                                    {
+                                        "question_id": "q-bp-jenis",
+                                        "operator": "contains",
+                                        "value": "Link"
+                                    }
+                                ]
+                            },
+                            "actions": [
+                                "show"
+                            ]
+                        },
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        }
+                    },
+                    {
+                        "id": "q-bp-file",
+                        "type": "file",
+                        "label": "File bukti pendukung",
+                        "description": "PDF, Word, atau Excel.",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": true,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": {
+                            "conditions": {
+                                "operator": "and",
+                                "rules": [
+                                    {
+                                        "question_id": "q-bp-jenis",
+                                        "operator": "contains",
+                                        "value": "File"
+                                    }
+                                ]
+                            },
+                            "actions": [
+                                "show"
+                            ]
+                        },
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        },
+                        "file": {
+                            "accept": "document",
+                            "max_mb": 10
+                        }
+                    }
+                ]
+            },
+            {
+                "id": "b-ttd",
+                "title": "PENGESAHAN",
+                "layout": "full",
+                "orientation": "",
+                "repeat": null,
+                "condition": null,
+                "questions": [
+                    {
+                        "id": "q-ttd",
+                        "type": "signature",
+                        "label": "Tanda tangan {{q-nama}}",
+                        "description": "Dengan menandatangani, saya menyatakan data absensi ini benar.",
+                        "required": true,
+                        "code_length": 0,
+                        "options": [],
+                        "hidden": false,
+                        "disabled": false,
+                        "hide_label": false,
+                        "placeholder": "",
+                        "prefill": "",
+                        "width": "full",
+                        "help_position": "below",
+                        "max_length": null,
+                        "options_from": "",
+                        "other_option": false,
+                        "other_label": "",
+                        "mask": "",
+                        "lookup": null,
+                        "logic": null,
+                        "validation": {
+                            "rules": [],
+                            "message": "",
+                            "checks": []
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "validation_rules": [
+        {
+            "number": "101",
+            "id": "q-nama",
+            "label": "Nama lengkap",
+            "type": "short",
+            "rules": [
+                "wajib diisi",
+                "teks maksimal 255 karakter",
+                "minimal karakter: 3"
+            ],
+            "logic": null,
+            "validation_message": null
+        },
+        {
+            "number": "102",
+            "id": "q-tanggal",
+            "label": "Tanggal absen",
+            "type": "date",
+            "rules": [
+                "wajib diisi",
+                "tanggal (YYYY-MM-DD)"
+            ],
+            "logic": null,
+            "validation_message": null
+        },
+        {
+            "number": "103",
+            "id": "q-lokasi",
+            "label": "Lokasi absen (tagging)",
+            "type": "location",
+            "rules": [
+                "wajib diisi",
+                "koordinat \"lintang, bujur\" dalam derajat desimal, akurasi GPS paling banyak 100 m (dikirim sebagai q-lokasi__akurasi)"
+            ],
+            "logic": null,
+            "validation_message": null
+        },
+        {
+            "number": "104",
+            "id": "q-status",
+            "label": "Status kehadiran",
+            "type": "single",
+            "rules": [
+                "wajib diisi",
+                "salah satu dari: Masuk | Tidak masuk"
+            ],
+            "logic": null,
+            "validation_message": null
+        },
+        {
+            "number": "201",
+            "id": "q-kegiatan",
+            "label": "Kegiatan yang dilakukan",
+            "type": "long",
+            "rules": [
+                "wajib diisi",
+                "teks maksimal 5000 karakter"
+            ],
+            "logic": null,
+            "validation_message": null
+        },
+        {
+            "number": "202",
+            "id": "q-bk-jenis",
+            "label": "Kirim bukti kegiatan lewat",
+            "type": "multiple",
+            "rules": [
+                "wajib diisi",
+                "satu atau lebih dari: Foto | Link | File"
+            ],
+            "logic": null,
+            "validation_message": null
+        },
+        {
+            "number": "203",
+            "id": "q-bk-foto",
+            "label": "Foto bukti kegiatan",
+            "type": "file",
+            "rules": [
+                "wajib diisi",
+                "tersembunyi",
+                "berkas jpg/jpeg/png/webp maksimal 5 MB"
+            ],
+            "logic": "Jika 202 berisi Foto maka tampilkan",
+            "validation_message": null
+        },
+        {
+            "number": "204",
+            "id": "q-bk-link",
+            "label": "Link bukti kegiatan",
+            "type": "url",
+            "rules": [
+                "wajib diisi",
+                "tersembunyi",
+                "tautan http/https maksimal 500 karakter"
+            ],
+            "logic": "Jika 202 berisi Link maka tampilkan",
+            "validation_message": null
+        },
+        {
+            "number": "205",
+            "id": "q-bk-file",
+            "label": "File bukti kegiatan",
+            "type": "file",
+            "rules": [
+                "wajib diisi",
+                "tersembunyi",
+                "berkas pdf/doc/docx/xls/xlsx/csv maksimal 10 MB"
+            ],
+            "logic": "Jika 202 berisi File maka tampilkan",
+            "validation_message": null
+        },
+        {
+            "number": "301",
+            "id": "q-alasan",
+            "label": "Alasan tidak masuk",
+            "type": "single",
+            "rules": [
+                "wajib diisi",
+                "salah satu dari: Sakit | Izin keperluan keluarga | Izin kegiatan kampus | Lainnya (sebutkan)"
+            ],
+            "logic": null,
+            "validation_message": null
+        },
+        {
+            "number": "302",
+            "id": "q-alasan-ket",
+            "label": "Keterangan",
+            "type": "long",
+            "rules": [
+                "wajib diisi",
+                "teks maksimal 5000 karakter"
+            ],
+            "logic": null,
+            "validation_message": null
+        },
+        {
+            "number": "303",
+            "id": "q-bp-jenis",
+            "label": "Kirim bukti pendukung lewat",
+            "type": "multiple",
+            "rules": [
+                "wajib diisi",
+                "satu atau lebih dari: Foto | Link | File"
+            ],
+            "logic": null,
+            "validation_message": null
+        },
+        {
+            "number": "304",
+            "id": "q-bp-foto",
+            "label": "Foto bukti pendukung",
+            "type": "file",
+            "rules": [
+                "wajib diisi",
+                "tersembunyi",
+                "berkas jpg/jpeg/png/webp maksimal 5 MB"
+            ],
+            "logic": "Jika 303 berisi Foto maka tampilkan",
+            "validation_message": null
+        },
+        {
+            "number": "305",
+            "id": "q-bp-link",
+            "label": "Link bukti pendukung",
+            "type": "url",
+            "rules": [
+                "wajib diisi",
+                "tersembunyi",
+                "tautan http/https maksimal 500 karakter"
+            ],
+            "logic": "Jika 303 berisi Link maka tampilkan",
+            "validation_message": null
+        },
+        {
+            "number": "306",
+            "id": "q-bp-file",
+            "label": "File bukti pendukung",
+            "type": "file",
+            "rules": [
+                "wajib diisi",
+                "tersembunyi",
+                "berkas pdf/doc/docx/xls/xlsx/csv maksimal 10 MB"
+            ],
+            "logic": "Jika 303 berisi File maka tampilkan",
+            "validation_message": null
+        },
+        {
+            "number": "401",
+            "id": "q-ttd",
+            "label": "Tanda tangan {{q-nama}}",
+            "type": "signature",
+            "rules": [
+                "wajib diisi",
+                "gambar tanda tangan PNG (data URL)"
+            ],
+            "logic": null,
+            "validation_message": null
+        }
+    ],
+    "responses": [],
+    "assets": {
+        "logos": []
+    }
+}

@@ -23,6 +23,8 @@ Buka http://127.0.0.1:8000.
 
 `composer run setup` melakukan semuanya sekaligus: memasang dependensi, membuat `.env` dari `.env.example`, membuat `APP_KEY`, membuat database SQLite, menjalankan migrasi beserta data dummy, dan membuat link penyimpanan logo (`public/storage`).
 
+Kuesioner siap pakai yang ikut dimuat: **ABSENSI HARIAN PESERTA MAGANG** (nama, tanggal, tagging lokasi GPS dengan peta, status masuk/tidak masuk, bukti foto/link/file, tanda tangan). Untuk memasangnya saja: `php artisan db:seed --class=ReadySurveySeeder`.
+
 Data dummy yang ikut dimuat:
 
 - **DUMMY: Survei Kebutuhan Data Konsumen 2026**: 2 blok, 10 pertanyaan, 10 respons

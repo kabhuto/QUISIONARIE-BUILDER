@@ -26,6 +26,6 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
-        $this->call(DummySurveySeeder::class);
+        $this->call([ReadySurveySeeder::class, DummySurveySeeder::class]);
     }
 }

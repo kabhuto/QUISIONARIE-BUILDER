@@ -13,12 +13,15 @@ use Illuminate\Support\Carbon;
  */
 class DummySurveySeeder extends Seeder
 {
+    /** Where the JSON export files are, relative to the database folder. */
+    protected string $folder = 'seeders/data';
+
     /**
      * Seed the dummy surveys.
      */
     public function run(): void
     {
-        foreach (glob(database_path('seeders/data/*.json')) as $path) {
+        foreach (glob(database_path($this->folder.'/*.json')) as $path) {
             $file = json_decode((string) file_get_contents($path), true);
             SurveyJson::assertExportFile($file);
 
