@@ -60,6 +60,7 @@ php artisan test
 - Ekspor/impor JSON dan validasi data memakai JSON sebagai template aturan
 - Pengaturan per pertanyaan (Opsi / Logika / Validasi): wajib, tersembunyi, nonaktif, logika DAN/ATAU, pemeriksaan konsistensi galat/peringatan, pembanding rentang, tag jawaban `@`
 - Isian dinamis ala FormGear/FASIH: **Hitungan (rumus)** seperti `{{201}} + {{202}}`, `round()`, `years()`, `sum()`; tag jawaban `{{101}}` di teks pertanyaan; opsi dari jawaban pertanyaan lain; opsi "Lainnya (sebutkan)"; masking (`99.99.999`); jam; lokasi GPS; unggah foto/berkas
+- Unggahan dikompres otomatis: foto diperkecil (sisi terpanjang 1920 px), DOCX/XLSX dipadatkan ulang, PDF lewat Ghostscript bila terpasang (`GHOSTSCRIPT_PATH` di `.env`). Dokumen bertanda tangan elektronik (PDF PAdES/TTE, tanda tangan digital Office) disimpan asli tanpa diubah
 - **Rincian berulang (roster)**: blok diulang per jumlah, per pilihan yang dicentang, atau per nama di **Daftar nama**; logika, validasi, dan rumus berjalan per baris; `{{@baris}}` menampilkan nama rincian
 - **Data referensi** (CSV) untuk daftar pilihan, termasuk pilihan berjenjang (kecamatan → desa), atau opsi dari API luar
 - **Penugasan**: tautan pribadi berpredata (bisa dikunci), sekali kirim; dibuat dari CSV atau lewat API

@@ -7,10 +7,10 @@ use App\Models\Survey;
 use App\Support\FieldValidation;
 use App\Support\Lookup;
 use App\Support\SurveyLogic;
+use App\Support\UploadCompressor;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -672,7 +672,7 @@ class SubmitSurveyResponseRequest extends FormRequest
             'matrix' => $this->matrixAnswer($question),
             'list' => $this->listAnswer($field),
             'multiple' => array_values(array_intersect($this->optionsOf($field), (array) $raw)),
-            'file' => $this->storedFile($question, $raw),
+            'file' => $this->storedFile($field['key'], $raw),
             'location' => preg_replace('/\s*,\s*/', ', ', trim((string) $raw)),
             default => is_scalar($raw) ? trim((string) $raw) : '',
         };
@@ -712,11 +712,9 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
-     * Stores an uploaded file under the survey's upload folder; a file stored earlier keeps its path.
-     *
-     * @param  array<string, mixed>  $question
+     * Stores an uploaded file (compressed) under the survey's upload folder; a file stored earlier keeps its path.
      */
-    private function storedFile(array $question, mixed $value): string
+    private function storedFile(string $key, mixed $value): string
     {
         if (Survey::isUploadPath($value)) {
             return $value;
@@ -725,11 +723,7 @@ class SubmitSurveyResponseRequest extends FormRequest
             return '';
         }
 
-        return $this->storedFiles[$question['id']] ??= $value->storeAs(
-            'uploads/'.$this->survey()->id,
-            Str::lower(Str::random(32)).'.'.strtolower($value->getClientOriginalExtension()),
-            'public',
-        );
+        return $this->storedFiles[$key] ??= UploadCompressor::store($value, 'uploads/'.$this->survey()->id);
     }
 
     /**

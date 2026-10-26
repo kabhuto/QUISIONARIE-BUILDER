@@ -227,7 +227,7 @@
                             <div class="cawi-file" data-file>
                                 <input class="fill-input" id="{{ $inputId }}" name="{{ $name }}" type="file" accept="{{ collect($extensions)->map(fn ($extension) => '.'.$extension)->implode(',') }}" data-max-mb="{{ $maxMb }}" @if (($question['file']['accept'] ?? 'image') === 'image') capture="environment" @endif>
                                 <img class="cawi-file-preview" alt="" hidden data-file-preview>
-                                <p class="fill-hint">{{ strtoupper(implode(', ', $extensions)) }} · maksimal {{ $maxMb }} MB @if ($errors->any()) · pilih berkas lagi bila sebelumnya sudah dipilih @endif</p>
+                                <p class="fill-hint">{{ strtoupper(implode(', ', $extensions)) }} · maksimal {{ $maxMb }} MB · dikompres otomatis, kecuali dokumen bertanda tangan elektronik @if ($errors->any()) · pilih berkas lagi bila sebelumnya sudah dipilih @endif</p>
                             </div>
                             @break
                         @case('email')
