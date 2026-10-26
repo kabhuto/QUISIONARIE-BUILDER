@@ -1188,7 +1188,7 @@
                 </div>` : '',
             question.type === 'location' ? `
                 <label class="setting-field"><span>Akurasi GPS maks. (meter)</span><input class="setting-select" type="number" min="1" max="${config.maxLocationAccuracy}" placeholder="tanpa batas" value="${question.location?.max_accuracy ?? ''}" data-option="location_max_accuracy"></label>
-                <p class="setting-note">Lokasi baru diterima bila GPS seakurat ini atau lebih baik, mis. 10 m untuk absensi. Kosongkan bila tanpa batas.</p>` : '',
+                <p class="setting-note">GPS mengincar akurasi 10 m; bila belum tercapai dalam 10 detik, lokasi terbaik yang masih dalam batas ini diterima (mis. 50 m untuk absensi). Kosongkan bila tanpa batas.</p>` : '',
             question.type === 'file' ? `
                 <div class="setting-pair">
                     <label class="setting-field"><span>Jenis berkas</span><select class="setting-select" data-option="file_accept">${Object.entries(config.fileKinds).map(([value, kind]) => `<option value="${value}" ${question.file.accept === value ? 'selected' : ''}>${escapeHtml(kind.label)}</option>`).join('')}</select></label>

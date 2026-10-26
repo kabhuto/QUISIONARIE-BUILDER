@@ -1075,6 +1075,8 @@
 
     // ── Input masks, locations, uploads ────────────────────────────────────
 
+    const GOOD_ACCURACY = 10;
+    const SETTLE_MS = 10000;
     const locationPattern = /^(-?\d{1,2}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/;
 
     function maskPattern(mask) {
@@ -1113,13 +1115,19 @@
             status.textContent = 'Perangkat ini tidak mendukung pengambilan lokasi. Coba dengan HP atau browser lain.';
             return;
         }
-        // Keep listening to the GPS until a fix is as accurate as the question demands (or the first
-        // fix when it sets no limit); a phone's first fixes are often coarse and sharpen within seconds.
+        // Keep listening to the GPS, since a phone's first fixes are often coarse and sharpen within
+        // seconds: a fix of 10 m or better is taken at once; after 10 s the best fix within the
+        // question's limit is taken; without a limit the first fix is.
         const maxAccuracy = Number(container.dataset.maxAccuracy || 0);
+        const ideal = Math.min(GOOD_ACCURACY, maxAccuracy);
+        const started = Date.now();
+        let settle = null;
         let best = null;
         let watch = null;
         const finish = message => {
             navigator.geolocation.clearWatch(watch);
+            watch = null;
+            clearTimeout(settle);
             clearTimeout(timer);
             button.disabled = false;
             status.textContent = message;
@@ -1139,7 +1147,13 @@
         button.disabled = true;
         watch = navigator.geolocation.watchPosition(position => {
             if (!best || position.coords.accuracy < best.coords.accuracy) best = position;
-            if (!maxAccuracy || best.coords.accuracy <= maxAccuracy) return accept(best);
+            if (!maxAccuracy || best.coords.accuracy <= ideal) return accept(best);
+            if (best.coords.accuracy <= maxAccuracy && Date.now() - started >= SETTLE_MS) return accept(best);
+            if (best.coords.accuracy <= maxAccuracy) {
+                status.textContent = `Mempertajam lokasi… akurasi saat ini ${Math.round(best.coords.accuracy)} m.`;
+                settle ??= setTimeout(() => watch !== null && accept(best), SETTLE_MS - (Date.now() - started));
+                return;
+            }
             status.textContent = `Mencari sinyal GPS… akurasi saat ini ${Math.round(best.coords.accuracy)} m (harus ${maxAccuracy} m atau lebih baik).`;
         }, error => {
             if (error.code === 1) finish('Izin lokasi ditolak. Izinkan akses lokasi di pengaturan browser, lalu tekan tombol lagi.');
