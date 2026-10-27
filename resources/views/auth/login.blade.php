@@ -23,8 +23,8 @@
 
         <form method="POST" action="{{ route('login.store') }}">
             @csrf
-            <label class="setting-field"><span>Email</span>
-                <input class="setting-select" type="email" name="email" value="{{ old('email') }}" autocomplete="username" required autofocus>
+            <label class="setting-field"><span>Username atau email</span>
+                <input class="setting-select" type="text" name="login" value="{{ old('login') }}" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
             </label>
             <label class="setting-field"><span>Kata sandi</span>
                 <input class="setting-select" type="password" name="password" autocomplete="current-password" required>

@@ -9,7 +9,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
- * Admin sign-in with email and password; accounts are made with "php artisan admin:buat".
+ * Admin sign-in with a username or email and a password; accounts are made with "php artisan admin:buat".
  */
 class LoginController extends Controller
 {
@@ -20,13 +20,15 @@ class LoginController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $credentials = $request->validate(
-            ['email' => ['required', 'email'], 'password' => ['required', 'string']],
-            ['email.required' => 'Isi email.', 'email.email' => 'Email tidak valid.', 'password.required' => 'Isi kata sandi.'],
+        $data = $request->validate(
+            ['login' => ['required', 'string', 'max:255'], 'password' => ['required', 'string']],
+            ['login.required' => 'Isi username atau email.', 'password.required' => 'Isi kata sandi.'],
         );
 
-        if (! Auth::attempt($credentials, $request->boolean('remember'))) {
-            throw ValidationException::withMessages(['email' => 'Email atau kata sandi salah.']);
+        $login = trim($data['login']);
+        $field = str_contains($login, '@') ? 'email' : 'username';
+        if (! Auth::attempt([$field => $login, 'password' => $data['password']], $request->boolean('remember'))) {
+            throw ValidationException::withMessages(['login' => 'Username/email atau kata sandi salah.']);
         }
 
         $request->session()->regenerate();

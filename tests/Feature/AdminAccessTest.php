@@ -39,11 +39,11 @@ class AdminAccessTest extends TestCase
         $this->get(route('form.create', $survey))->assertOk();
 
         $admin = User::query()->create(['name' => 'Admin', 'email' => 'admin@bps.test', 'password' => 'rahasia-123']);
-        $this->post(route('login.store'), ['email' => 'admin@bps.test', 'password' => 'salah'])->assertSessionHasErrors(['email' => 'Email atau kata sandi salah.']);
+        $this->post(route('login.store'), ['login' => 'admin@bps.test', 'password' => 'salah'])->assertSessionHasErrors(['login' => 'Username/email atau kata sandi salah.']);
         $this->assertGuest();
 
         // After signing in the admin lands on the page they asked for.
-        $this->post(route('login.store'), ['email' => 'admin@bps.test', 'password' => 'rahasia-123'])->assertRedirect(route('surveys.responses.index', $survey));
+        $this->post(route('login.store'), ['login' => 'admin@bps.test', 'password' => 'rahasia-123'])->assertRedirect(route('surveys.responses.index', $survey));
         $this->assertAuthenticatedAs($admin);
         $this->get(route('surveys.responses.index', $survey))->assertOk()->assertSee('KELUAR');
 
@@ -71,7 +71,7 @@ class AdminAccessTest extends TestCase
 
     public function test_an_admin_account_is_made_from_the_command_line(): void
     {
-        $this->artisan('admin:buat', ['email' => 'humas@bps.test', '--name' => 'Humas'])
+        $this->artisan('admin:buat', ['akun' => 'humas@bps.test', '--name' => 'Humas'])
             ->expectsQuestion('Kata sandi (minimal 8 karakter)', 'kuesioner-2026')
             ->expectsQuestion('Ulangi kata sandi', 'kuesioner-2026')
             ->expectsOutput('Admin dibuat: humas@bps.test')
@@ -79,8 +79,28 @@ class AdminAccessTest extends TestCase
 
         $this->assertTrue(Hash::check('kuesioner-2026', User::query()->sole()->password));
 
-        $this->artisan('admin:buat', ['email' => 'humas@bps.test'])
+        $this->artisan('admin:buat', ['akun' => 'humas@bps.test'])
             ->expectsQuestion('Kata sandi (minimal 8 karakter)', 'pendek')
             ->assertExitCode(1);
+    }
+
+    public function test_an_admin_signs_in_with_a_username(): void
+    {
+        config(['app.admin_open_on_lan' => false]);
+
+        $this->artisan('admin:buat', ['akun' => 'admin3526'])
+            ->expectsQuestion('Kata sandi (minimal 8 karakter)', 'sandi-uji-123')
+            ->expectsQuestion('Ulangi kata sandi', 'sandi-uji-123')
+            ->expectsOutput('Admin dibuat: admin3526')
+            ->assertExitCode(0);
+        $this->artisan('admin:buat', ['akun' => 'admin 3526'])->assertExitCode(1);
+
+        $this->get(route('login'))->assertOk()->assertSee('Username atau email');
+        $this->post(route('login.store'), ['login' => 'admin3526', 'password' => 'salah'])->assertSessionHasErrors('login');
+        $this->assertGuest();
+
+        $this->post(route('login.store'), ['login' => ' admin3526 ', 'password' => 'sandi-uji-123'])->assertRedirect(route('surveys.index'));
+        $this->assertAuthenticatedAs(User::query()->where('username', 'admin3526')->sole());
+        $this->get(route('surveys.index'))->assertOk();
     }
 }

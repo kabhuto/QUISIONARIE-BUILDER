@@ -27,7 +27,7 @@ cp .env.hostinger.example .env
 nano .env                      # isi APP_URL, DB_DATABASE, DB_USERNAME, DB_PASSWORD
 php artisan key:generate
 bash deploy.sh                 # composer install, migrasi, storage link, cache
-php artisan admin:buat email@anda.com --name="Humas BPS"   # buat akun admin
+php artisan admin:buat admin3526 --name="Humas BPS"    # buat akun admin (username atau email)
 ```
 
 Pasang kuesioner siap pakai (**Absensi Harian Peserta Magang**): `php artisan db:seed --class=ReadySurveySeeder --force`.
@@ -55,5 +55,5 @@ cd ~/domains/<domain-anda>/public_html && bash deploy.sh
 
 - **Data tidak ikut GitHub.** Database, berkas unggahan, dan `.env` hanya ada di server. Kuesioner dari komputer lokal bisa dipindahkan lewat **Ekspor JSON** lalu **Impor JSON** di dashboard Hostinger.
 - **Halaman admin wajib login** (`ADMIN_OPEN_ON_LAN=false`). Responden tetap mengisi tanpa login lewat tautan `https://<domain-anda>/f/<kode>`.
-- **Lupa kata sandi admin**: jalankan lagi `php artisan admin:buat email@anda.com` untuk mengganti kata sandinya.
+- **Lupa kata sandi admin**: jalankan lagi `php artisan admin:buat admin3526` (atau email akunnya) untuk mengganti kata sandinya.
 - **Galat 500**: lihat `storage/logs/laravel.log`, dan pastikan folder `storage` dan `bootstrap/cache` bisa ditulis (`chmod -R 775 storage bootstrap/cache`).

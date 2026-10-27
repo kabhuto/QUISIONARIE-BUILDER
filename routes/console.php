@@ -9,7 +9,15 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Artisan::command('admin:buat {email} {--name=Admin}', function (string $email) {
+// The account is a username (e.g. admin3526) or an email address; either is what the admin types to sign in.
+Artisan::command('admin:buat {akun} {--name=Admin}', function (string $akun) {
+    $isEmail = str_contains($akun, '@');
+    if (! $isEmail && preg_match('/^[A-Za-z0-9._-]{3,50}$/', $akun) !== 1) {
+        $this->error('Username 3–50 karakter: huruf, angka, titik, garis bawah, atau tanda hubung.');
+
+        return 1;
+    }
+
     $password = (string) $this->secret('Kata sandi (minimal 8 karakter)');
     if (mb_strlen($password) < 8 || $password !== (string) $this->secret('Ulangi kata sandi')) {
         $this->error('Kata sandi kurang dari 8 karakter atau tidak sama.');
@@ -17,8 +25,11 @@ Artisan::command('admin:buat {email} {--name=Admin}', function (string $email) {
         return 1;
     }
 
-    $user = User::query()->updateOrCreate(['email' => $email], ['name' => (string) $this->option('name'), 'password' => $password]);
-    $this->info(($user->wasRecentlyCreated ? 'Admin dibuat: ' : 'Kata sandi admin diperbarui: ').$email);
+    // Users need an email; a username-only admin gets a placeholder that is never mailed.
+    $user = $isEmail
+        ? User::query()->updateOrCreate(['email' => $akun], ['name' => (string) $this->option('name'), 'password' => $password])
+        : User::query()->updateOrCreate(['username' => $akun], ['name' => (string) $this->option('name'), 'email' => $akun.'@admin.ruang-kuesioner.invalid', 'password' => $password]);
+    $this->info(($user->wasRecentlyCreated ? 'Admin dibuat: ' : 'Kata sandi admin diperbarui: ').$akun);
 
     return 0;
 })->purpose('Buat akun admin (atau ganti kata sandinya) untuk masuk ke Ruang Kuesioner');
