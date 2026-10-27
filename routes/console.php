@@ -44,14 +44,16 @@ Artisan::command('admin:sinkron', function () {
 
         return 0;
     }
-    // "<kata-sandi-admin>" is the placeholder from .env.hostinger.example, never a real password.
-    if (preg_match('/^[A-Za-z0-9._-]{3,50}$/', $username) !== 1 || mb_strlen($password) < 8 || str_starts_with($password, '<')) {
-        $this->error('ADMIN_USERNAME harus 3–50 huruf/angka/._- dan ADMIN_PASSWORD minimal 8 karakter.');
+    // ADMIN_USERNAME may also be an email address (e.g. test@example.com). "<kata-sandi-admin>" is the
+    // placeholder from .env.hostinger.example, never a real password.
+    $isEmail = filter_var($username, FILTER_VALIDATE_EMAIL) !== false;
+    if ((! $isEmail && preg_match('/^[A-Za-z0-9._-]{3,50}$/', $username) !== 1) || mb_strlen($password) < 8 || str_starts_with($password, '<')) {
+        $this->error('ADMIN_USERNAME harus email atau 3–50 huruf/angka/._-, dan ADMIN_PASSWORD minimal 8 karakter.');
 
         return 1;
     }
 
-    $user = User::query()->firstOrNew(['username' => $username]);
+    $user = User::query()->firstOrNew([$isEmail ? 'email' : 'username' => $username]);
     if ($user->exists && Hash::check($password, $user->password)) {
         $this->info('Akun admin sudah ada: '.$username);
 

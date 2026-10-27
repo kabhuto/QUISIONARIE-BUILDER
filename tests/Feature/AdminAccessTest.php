@@ -104,6 +104,13 @@ class AdminAccessTest extends TestCase
 
         config(['app.admin_open_on_lan' => false]);
         $this->post(route('login.store'), ['login' => 'admin3526', 'password' => 'sandi-baru-456'])->assertRedirect(route('surveys.index'));
+        $this->post(route('logout'));
+
+        // An email address works too.
+        config(['app.admin_username' => 'test@example.com', 'app.admin_password' => 'password']);
+        $this->artisan('admin:sinkron')->expectsOutput('Admin dibuat: test@example.com')->assertExitCode(0);
+        $this->assertNull(User::query()->where('email', 'test@example.com')->sole()->username);
+        $this->post(route('login.store'), ['login' => 'test@example.com', 'password' => 'password'])->assertRedirect(route('surveys.index'));
     }
 
     public function test_an_admin_signs_in_with_a_username(): void

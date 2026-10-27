@@ -45,11 +45,11 @@ php artisan db:seed --class=ReadySurveySeeder --force  # kuesioner Absensi Haria
 
 ### Akun admin otomatis (tanpa mengetik perintah)
 
-Akun admin dibuat sendiri setiap deploy dari dua baris di `.env` server:
+Akun admin dibuat sendiri setiap deploy dari dua baris di `.env` server (ADMIN_USERNAME boleh email atau username):
 
 ```
-ADMIN_USERNAME=admin3526
-ADMIN_PASSWORD=kata-sandi-anda
+ADMIN_USERNAME=test@example.com
+ADMIN_PASSWORD=password
 ```
 
 Tanpa Terminal: buka **File Manager** → folder `ruang-kuesioner` → (centang *Show Hidden Files* di *Settings*) → salin `.env.hostinger.example` menjadi `.env` → **Edit**, isi `APP_URL`, `DB_*`, `ADMIN_PASSWORD`. Lalu di **Git™ Version Control** tekan **Deploy HEAD Commit**: akun langsung ada dan bisa dipakai masuk. Mengganti `ADMIN_PASSWORD` lalu deploy lagi = mengganti kata sandi. Kata sandi ini hanya ada di server, tidak ikut GitHub.
