@@ -3,6 +3,7 @@
 use App\Models\User;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
@@ -33,6 +34,34 @@ Artisan::command('admin:buat {akun} {--name=Admin}', function (string $akun) {
 
     return 0;
 })->purpose('Buat akun admin (atau ganti kata sandinya) untuk masuk ke Ruang Kuesioner');
+
+// Run by deploy.sh: the .env account is made, and its password follows ADMIN_PASSWORD while that is set.
+Artisan::command('admin:sinkron', function () {
+    $username = trim((string) config('app.admin_username'));
+    $password = (string) config('app.admin_password');
+    if ($username === '' || $password === '') {
+        $this->line('ADMIN_USERNAME/ADMIN_PASSWORD kosong di .env: akun admin tidak diubah.');
+
+        return 0;
+    }
+    // "<kata-sandi-admin>" is the placeholder from .env.hostinger.example, never a real password.
+    if (preg_match('/^[A-Za-z0-9._-]{3,50}$/', $username) !== 1 || mb_strlen($password) < 8 || str_starts_with($password, '<')) {
+        $this->error('ADMIN_USERNAME harus 3–50 huruf/angka/._- dan ADMIN_PASSWORD minimal 8 karakter.');
+
+        return 1;
+    }
+
+    $user = User::query()->firstOrNew(['username' => $username]);
+    if ($user->exists && Hash::check($password, $user->password)) {
+        $this->info('Akun admin sudah ada: '.$username);
+
+        return 0;
+    }
+    $user->fill(['name' => $user->name ?: 'Admin', 'email' => $user->email ?: $username.'@admin.ruang-kuesioner.invalid', 'password' => $password])->save();
+    $this->info(($user->wasRecentlyCreated ? 'Admin dibuat: ' : 'Kata sandi admin diperbarui: ').$username);
+
+    return 0;
+})->purpose('Buat akun admin dari ADMIN_USERNAME dan ADMIN_PASSWORD di .env');
 
 // On shared hosting there is no long-running worker: cron runs the scheduler every minute and it
 // works through the queue (e.g. copies to Google Drive) until it is empty.

@@ -84,6 +84,28 @@ class AdminAccessTest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_deploy_makes_the_admin_account_from_the_env_file(): void
+    {
+        config(['app.admin_username' => null, 'app.admin_password' => null]);
+        $this->artisan('admin:sinkron')->assertExitCode(0);
+        $this->assertSame(0, User::query()->count());
+
+        config(['app.admin_username' => 'admin3526', 'app.admin_password' => '<kata-sandi-admin>']);
+        $this->artisan('admin:sinkron')->assertExitCode(1);
+        $this->assertSame(0, User::query()->count());
+
+        config(['app.admin_password' => 'sandi-uji-123']);
+        $this->artisan('admin:sinkron')->expectsOutput('Admin dibuat: admin3526')->assertExitCode(0);
+        $this->artisan('admin:sinkron')->expectsOutput('Akun admin sudah ada: admin3526')->assertExitCode(0);
+
+        config(['app.admin_password' => 'sandi-baru-456']);
+        $this->artisan('admin:sinkron')->expectsOutput('Kata sandi admin diperbarui: admin3526')->assertExitCode(0);
+        $this->assertTrue(Hash::check('sandi-baru-456', User::query()->sole()->password));
+
+        config(['app.admin_open_on_lan' => false]);
+        $this->post(route('login.store'), ['login' => 'admin3526', 'password' => 'sandi-baru-456'])->assertRedirect(route('surveys.index'));
+    }
+
     public function test_an_admin_signs_in_with_a_username(): void
     {
         config(['app.admin_open_on_lan' => false]);

@@ -38,5 +38,7 @@ grep -q '^APP_KEY=base64:' .env || "$PHP" artisan key:generate --force
 [ -e public/storage ] || "$PHP" artisan storage:link || echo "storage:link gagal; berkas tetap disajikan lewat aplikasi."
 "$PHP" artisan optimize:clear
 "$PHP" artisan optimize
+# The admin account from ADMIN_USERNAME/ADMIN_PASSWORD in .env (skipped when they are empty).
+"$PHP" artisan admin:sinkron
 
 echo "Selesai ($("$PHP" -r 'echo PHP_VERSION;')). Buka $(grep '^APP_URL=' .env | cut -d= -f2-)"

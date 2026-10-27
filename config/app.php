@@ -93,6 +93,16 @@ return [
 
     'admin_open_on_lan' => (bool) env('ADMIN_OPEN_ON_LAN', false),
 
+    /*
+    | The admin account deploy.sh makes (php artisan admin:sinkron) when both are
+    | set in the server's .env, so it exists without typing in a terminal. The
+    | password stays on the server and never goes into the public repository.
+    */
+
+    'admin_username' => env('ADMIN_USERNAME'),
+
+    'admin_password' => env('ADMIN_PASSWORD'),
+
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),

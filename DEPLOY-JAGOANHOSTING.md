@@ -38,11 +38,21 @@ Hanya folder `ruang-kuesioner/public` yang boleh terbuka di web. Pilih salah sat
 ```bash
 cd ~/ruang-kuesioner
 cp .env.hostinger.example .env
-nano .env                    # isi APP_URL, DB_DATABASE, DB_USERNAME, DB_PASSWORD (DB_HOST tetap localhost)
-bash deploy.sh               # composer install, kunci aplikasi, migrasi, storage link, cache
-php artisan admin:buat admin3526 --name="Humas BPS"    # buat akun admin, lalu ketik kata sandinya 2x
+nano .env                    # isi APP_URL, DB_*, dan ADMIN_PASSWORD (DB_HOST tetap localhost)
+bash deploy.sh               # composer install, kunci aplikasi, migrasi, akun admin, cache
 php artisan db:seed --class=ReadySurveySeeder --force  # kuesioner Absensi Harian Peserta Magang
 ```
+
+### Akun admin otomatis (tanpa mengetik perintah)
+
+Akun admin dibuat sendiri setiap deploy dari dua baris di `.env` server:
+
+```
+ADMIN_USERNAME=admin3526
+ADMIN_PASSWORD=kata-sandi-anda
+```
+
+Tanpa Terminal: buka **File Manager** → folder `ruang-kuesioner` → (centang *Show Hidden Files* di *Settings*) → salin `.env.hostinger.example` menjadi `.env` → **Edit**, isi `APP_URL`, `DB_*`, `ADMIN_PASSWORD`. Lalu di **Git™ Version Control** tekan **Deploy HEAD Commit**: akun langsung ada dan bisa dipakai masuk. Mengganti `ADMIN_PASSWORD` lalu deploy lagi = mengganti kata sandi. Kata sandi ini hanya ada di server, tidak ikut GitHub.
 
 Jika `php -v` di Terminal masih menunjukkan versi lama, `deploy.sh` otomatis memakai PHP dari `/opt/alt/php83` atau `php84`. Untuk perintah `artisan` lain, tulis lengkap, mis. `/opt/alt/php83/usr/bin/php artisan ...`.
 
