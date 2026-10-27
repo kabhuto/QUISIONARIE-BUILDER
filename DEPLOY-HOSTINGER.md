@@ -24,23 +24,30 @@ Berkas `.htaccess` di folder utama repo sudah mengarahkan semua pengunjung ke fo
 ```bash
 cd ~/domains/<domain-anda>/public_html
 cp .env.hostinger.example .env
-nano .env                      # isi APP_URL, DB_DATABASE, DB_USERNAME, DB_PASSWORD
-php artisan key:generate
-bash deploy.sh                 # composer install, migrasi, storage link, cache
-php artisan admin:buat admin3526 --name="Humas BPS"    # buat akun admin (username atau email)
+nano .env                      # isi APP_URL, DB_DATABASE, DB_USERNAME, DB_PASSWORD, ADMIN_PASSWORD
+bash deploy.sh                 # composer install, kunci aplikasi, migrasi, akun admin, cache
 ```
+
+**Akun admin dibuat otomatis** oleh `deploy.sh` dari dua baris di `.env` (kata sandi hanya di server, tidak ikut GitHub):
+
+```
+ADMIN_USERNAME=admin3526
+ADMIN_PASSWORD=kata-sandi-anda
+```
+
+Admin lain cukup ditambahkan dari menu **Admin** setelah masuk; semua admin punya akses penuh. `.env` juga bisa dibuat lewat *File Manager* hPanel (salin `.env.hostinger.example` → `.env` → Edit).
 
 Pasang kuesioner siap pakai (**Absensi Harian Peserta Magang**): `php artisan db:seed --class=ReadySurveySeeder --force`.
 Opsional, contoh kuesioner dummy: `php artisan db:seed --class=DummySurveySeeder --force`.
 
-Buka `https://<domain-anda>/masuk` dan masuk dengan akun admin tadi.
+Buka `https://<domain-anda>/masuk` dan masuk dengan username dan kata sandi tadi. Tombol **Tema** di kanan atas mengganti tampilan terang/gelap.
 
 ## 4. Cron untuk antrean (salinan ke Google Drive, dsb.)
 
 *Advanced → Cron Jobs* → **Custom**, setiap menit (`* * * * *`):
 
 ```
-/usr/bin/php /home/<u123456789>/domains/<domain-anda>/public_html/artisan schedule:run
+/opt/alt/php83/usr/bin/php /home/<u123456789>/domains/<domain-anda>/public_html/artisan schedule:run
 ```
 
 ## 5. Memperbarui setelah ada perubahan di GitHub
@@ -55,5 +62,8 @@ cd ~/domains/<domain-anda>/public_html && bash deploy.sh
 
 - **Data tidak ikut GitHub.** Database, berkas unggahan, dan `.env` hanya ada di server. Kuesioner dari komputer lokal bisa dipindahkan lewat **Ekspor JSON** lalu **Impor JSON** di dashboard Hostinger.
 - **Halaman admin wajib login** (`ADMIN_OPEN_ON_LAN=false`). Responden tetap mengisi tanpa login lewat tautan `https://<domain-anda>/f/<kode>`.
-- **Lupa kata sandi admin**: jalankan lagi `php artisan admin:buat admin3526` (atau email akunnya) untuk mengganti kata sandinya.
+- **Lupa kata sandi admin**: admin lain bisa menggantinya di menu **Admin**; atau ubah `ADMIN_PASSWORD` di `.env` lalu `bash deploy.sh`; atau `php artisan admin:buat admin3526`.
+- **`php -v` masih versi lama di SSH**: `deploy.sh` otomatis memakai `/opt/alt/php83` atau `php84`. Untuk perintah lain tulis lengkap, mis. `/opt/alt/php83/usr/bin/php artisan migrate --force`.
+- **`Unknown column ...`**: migrasi belum dijalankan setelah Deploy; jalankan `bash deploy.sh`.
+- **Halaman galat menampilkan detail kode/SQL**: pastikan `APP_ENV=production` dan `APP_DEBUG=false` di `.env`, lalu `bash deploy.sh`.
 - **Galat 500**: lihat `storage/logs/laravel.log`, dan pastikan folder `storage` dan `bootstrap/cache` bisa ditulis (`chmod -R 775 storage bootstrap/cache`).

@@ -44,9 +44,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $isNew ? 'Kuesioner baru' : $survey->title }} | Ruang Kuesioner</title>
+    @include('partials.theme')
     <link rel="stylesheet" href="{{ asset('css/builder.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/ui.css') }}">
 </head>
-<body>
+<body class="admin-page builder-page">
     <header class="topbar">
         <a class="brand" href="{{ route('surveys.index') }}" aria-label="Kembali ke dashboard">
             <span class="brand-mark">b<span>p</span>s</span>
@@ -58,6 +60,7 @@
             <span class="context-divider">/</span> {{ $isNew ? 'KUESIONER BARU' : str($survey->title)->limit(40) }}
         </div>
         <div class="topbar-actions">
+            @include('partials.theme-toggle')
             <button class="button button-ghost" type="submit" form="builder-form" name="intent" value="print" title="Simpan lalu buka tampilan cetak kertas">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z"/></svg>
                 Cetak

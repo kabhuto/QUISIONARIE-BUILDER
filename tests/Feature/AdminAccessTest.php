@@ -45,7 +45,7 @@ class AdminAccessTest extends TestCase
         // After signing in the admin lands on the page they asked for.
         $this->post(route('login.store'), ['login' => 'admin@bps.test', 'password' => 'rahasia-123'])->assertRedirect(route('surveys.responses.index', $survey));
         $this->assertAuthenticatedAs($admin);
-        $this->get(route('surveys.responses.index', $survey))->assertOk()->assertSee('KELUAR');
+        $this->get(route('surveys.responses.index', $survey))->assertOk()->assertSee('Keluar');
 
         $this->post(route('logout'))->assertRedirect(route('login'));
         $this->assertGuest();

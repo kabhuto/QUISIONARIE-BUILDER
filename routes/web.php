@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\ApiAccessController;
 use App\Http\Controllers\AssignmentController;
 use App\Http\Controllers\DataValidationController;
@@ -53,6 +54,10 @@ Route::middleware('admin')->group(function (): void {
     Route::get('/akses-api', [ApiAccessController::class, 'index'])->name('api-access.index');
     Route::post('/akses-api', [ApiAccessController::class, 'store'])->name('api-access.store');
     Route::delete('/akses-api/{token}', [ApiAccessController::class, 'destroy'])->name('api-access.destroy');
+    Route::get('/admin', [AdminUserController::class, 'index'])->name('admins.index');
+    Route::post('/admin', [AdminUserController::class, 'store'])->name('admins.store');
+    Route::put('/admin/{admin}', [AdminUserController::class, 'update'])->name('admins.update');
+    Route::delete('/admin/{admin}', [AdminUserController::class, 'destroy'])->name('admins.destroy');
     Route::get('/surveys/{survey}/google-drive', [GoogleDriveController::class, 'show'])->name('google-drive.show');
     Route::put('/surveys/{survey}/google-drive', [GoogleDriveController::class, 'update'])->name('google-drive.update');
     Route::post('/surveys/{survey}/google-drive/kirim', [GoogleDriveController::class, 'sendAll'])->name('google-drive.send-all');

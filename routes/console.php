@@ -13,7 +13,7 @@ Artisan::command('inspire', function () {
 // The account is a username (e.g. admin3526) or an email address; either is what the admin types to sign in.
 Artisan::command('admin:buat {akun} {--name=Admin}', function (string $akun) {
     $isEmail = str_contains($akun, '@');
-    if (! $isEmail && preg_match('/^[A-Za-z0-9._-]{3,50}$/', $akun) !== 1) {
+    if (! $isEmail && preg_match(User::USERNAME_PATTERN, $akun) !== 1) {
         $this->error('Username 3–50 karakter: huruf, angka, titik, garis bawah, atau tanda hubung.');
 
         return 1;
@@ -29,7 +29,7 @@ Artisan::command('admin:buat {akun} {--name=Admin}', function (string $akun) {
     // Users need an email; a username-only admin gets a placeholder that is never mailed.
     $user = $isEmail
         ? User::query()->updateOrCreate(['email' => $akun], ['name' => (string) $this->option('name'), 'password' => $password])
-        : User::query()->updateOrCreate(['username' => $akun], ['name' => (string) $this->option('name'), 'email' => $akun.'@admin.ruang-kuesioner.invalid', 'password' => $password]);
+        : User::query()->updateOrCreate(['username' => $akun], ['name' => (string) $this->option('name'), 'email' => User::placeholderEmail($akun), 'password' => $password]);
     $this->info(($user->wasRecentlyCreated ? 'Admin dibuat: ' : 'Kata sandi admin diperbarui: ').$akun);
 
     return 0;
@@ -47,7 +47,7 @@ Artisan::command('admin:sinkron', function () {
     // ADMIN_USERNAME may also be an email address (e.g. test@example.com). "<kata-sandi-admin>" is the
     // placeholder from .env.hostinger.example, never a real password.
     $isEmail = filter_var($username, FILTER_VALIDATE_EMAIL) !== false;
-    if ((! $isEmail && preg_match('/^[A-Za-z0-9._-]{3,50}$/', $username) !== 1) || mb_strlen($password) < 8 || str_starts_with($password, '<')) {
+    if ((! $isEmail && preg_match(User::USERNAME_PATTERN, $username) !== 1) || mb_strlen($password) < 8 || str_starts_with($password, '<')) {
         $this->error('ADMIN_USERNAME harus email atau 3–50 huruf/angka/._-, dan ADMIN_PASSWORD minimal 8 karakter.');
 
         return 1;
@@ -59,7 +59,7 @@ Artisan::command('admin:sinkron', function () {
 
         return 0;
     }
-    $user->fill(['name' => $user->name ?: 'Admin', 'email' => $user->email ?: $username.'@admin.ruang-kuesioner.invalid', 'password' => $password])->save();
+    $user->fill(['name' => $user->name ?: 'Admin', 'email' => $user->email ?: User::placeholderEmail($username), 'password' => $password])->save();
     $this->info(($user->wasRecentlyCreated ? 'Admin dibuat: ' : 'Kata sandi admin diperbarui: ').$username);
 
     return 0;

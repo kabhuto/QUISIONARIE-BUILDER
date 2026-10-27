@@ -20,12 +20,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
     <title>{{ $survey->title }}</title>
+    @include('partials.theme')
     <link rel="stylesheet" href="{{ asset('css/fill.css') }}">
     @if (collect($survey->questions())->contains('type', 'location'))
         @include('partials.leaflet')
     @endif
 </head>
 <body class="fill-page" style="--accent: {{ $survey->themeColor() }}">
+    @include('partials.theme-toggle', ['class' => 'theme-toggle-floating'])
     @if ($isPreview)
         <div class="preview-banner">
             <span><b>Mode pratinjau</b> — beginilah tampilan untuk responden. Jawaban tidak disimpan.</span>

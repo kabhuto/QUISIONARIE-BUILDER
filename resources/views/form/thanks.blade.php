@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
     <title>Terima kasih | {{ $survey->title }}</title>
+    @include('partials.theme')
     <link rel="stylesheet" href="{{ asset('css/fill.css') }}">
 </head>
 <body class="fill-page" style="--accent: {{ $survey->themeColor() }}">
+    @include('partials.theme-toggle', ['class' => 'theme-toggle-floating'])
     <main class="fill-thanks">
         <section class="cawi-card">
             @include('partials.kop', ['class' => 'kop-cawi'])
