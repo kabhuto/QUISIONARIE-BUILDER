@@ -4,7 +4,7 @@ Panduan ini untuk paket Hostinger yang punya **akses SSH** (Premium, Business, a
 
 ## 1. Siapkan di hPanel
 
-1. **Versi PHP**: *Advanced → PHP Configuration* → pilih **PHP 8.4** (wajib 8.4 atau lebih baru). Di tab *PHP Extensions* pastikan **gd, zip, exif, fileinfo, mbstring, pdo_mysql** tercentang.
+1. **Versi PHP**: *Advanced → PHP Configuration* → pilih **PHP 8.3** atau **8.4** (minimal 8.3). Di tab *PHP Extensions* pastikan **gd, zip, exif, fileinfo, mbstring, pdo_mysql** tercentang.
 2. **Database**: *Databases → MySQL Databases* → buat database dan user baru. Catat nama database, nama user, dan kata sandinya.
 3. **SSH**: *Advanced → SSH Access* → aktifkan, catat perintah login (mis. `ssh -p 65002 u123456789@1.2.3.4`).
 4. **SSL**: *Security → SSL* → pastikan SSL domain aktif. HTTPS wajib, karena tanpa https browser HP tidak mau memberi lokasi GPS.

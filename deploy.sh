@@ -10,15 +10,15 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# The app needs PHP 8.4. On cPanel/CloudLinux the "php" command can be an older version than the
-# one picked for the website, so fall back to the alt-php 8.4 binary; PHP=/path/to/php overrides.
+# The app needs PHP 8.3 or newer. On cPanel/CloudLinux the "php" command can be an older version than the
+# one picked for the website, so fall back to an alt-php binary; PHP=/path/to/php overrides.
 PHP="${PHP:-php}"
-if ! "$PHP" -r 'exit(PHP_VERSION_ID >= 80401 ? 0 : 1);' 2>/dev/null; then
-    for candidate in /opt/alt/php85/usr/bin/php /opt/alt/php84/usr/bin/php /opt/cpanel/ea-php85/root/usr/bin/php /opt/cpanel/ea-php84/root/usr/bin/php; do
+if ! "$PHP" -r 'exit(PHP_VERSION_ID >= 80300 ? 0 : 1);' 2>/dev/null; then
+    for candidate in /opt/alt/php84/usr/bin/php /opt/alt/php83/usr/bin/php /opt/cpanel/ea-php84/root/usr/bin/php /opt/cpanel/ea-php83/root/usr/bin/php; do
         [ -x "$candidate" ] && PHP="$candidate" && break
     done
 fi
-"$PHP" -r 'exit(PHP_VERSION_ID >= 80401 ? 0 : 1);' || { echo "Butuh PHP 8.4 atau lebih baru (sekarang: $("$PHP" -r 'echo PHP_VERSION;'))." >&2; exit 1; }
+"$PHP" -r 'exit(PHP_VERSION_ID >= 80300 ? 0 : 1);' || { echo "Butuh PHP 8.3 atau lebih baru (sekarang: $("$PHP" -r 'echo PHP_VERSION;'))." >&2; exit 1; }
 # Composer's "#!/usr/bin/env php" then picks the same PHP.
 export PATH="$(dirname "$("$PHP" -r 'echo PHP_BINARY;')"):$PATH"
 

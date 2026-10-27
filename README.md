@@ -4,7 +4,7 @@ Aplikasi pembuat kuesioner untuk kegiatan BPS, berbasis Laravel. Kuesioner disus
 
 ## Kebutuhan
 
-- PHP 8.4 atau lebih baru, dengan ekstensi `pdo_sqlite`, `sqlite3`, `fileinfo`, `gd`, dan `zip`
+- PHP 8.3 atau lebih baru, dengan ekstensi `pdo_sqlite`, `sqlite3`, `fileinfo`, `gd`, dan `zip`
 - Composer 2
 - Git
 

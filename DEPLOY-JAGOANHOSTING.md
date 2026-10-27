@@ -4,7 +4,7 @@ Panduan ini untuk paket Jagoan Hosting yang memakai **cPanel**. Pengambilan kode
 
 ## 1. Siapkan di cPanel
 
-1. **Versi PHP**: *Software → Select PHP Version* (atau *MultiPHP Manager*) → pilih **8.4** (wajib 8.4 atau lebih baru). Di daftar *Extensions* pastikan **gd, zip, exif, fileinfo, mbstring, pdo_mysql, intl** tercentang.
+1. **Versi PHP**: *Software → Select PHP Version* (atau *MultiPHP Manager*) → pilih **8.3** atau **8.4** (minimal 8.3). Di daftar *Extensions* pastikan **gd, zip, exif, fileinfo, mbstring, pdo_mysql, intl** tercentang.
 2. **Database**: *Databases → MySQL® Database Wizard* → buat database, buat user, beri user **ALL PRIVILEGES**. Nama database dan user otomatis diawali nama akun cPanel, mis. `bpsbkl_kuesioner`. Catat nama database, nama user, dan kata sandinya.
 3. **SSL**: *Security → SSL/TLS Status* → jalankan **AutoSSL** untuk domain. HTTPS wajib, karena tanpa https browser HP tidak mau memberi lokasi GPS.
 
@@ -44,7 +44,7 @@ php artisan admin:buat admin3526 --name="Humas BPS"    # buat akun admin, lalu k
 php artisan db:seed --class=ReadySurveySeeder --force  # kuesioner Absensi Harian Peserta Magang
 ```
 
-Jika `php -v` di Terminal masih menunjukkan versi lama, `deploy.sh` otomatis memakai PHP 8.4 dari `/opt/alt/php84/usr/bin/php`. Untuk perintah `artisan` lain, tulis lengkap: `/opt/alt/php84/usr/bin/php artisan ...`.
+Jika `php -v` di Terminal masih menunjukkan versi lama, `deploy.sh` otomatis memakai PHP dari `/opt/alt/php83` atau `php84`. Untuk perintah `artisan` lain, tulis lengkap, mis. `/opt/alt/php83/usr/bin/php artisan ...`.
 
 Buka `https://<domain-anda>/masuk` dan masuk dengan akun admin tadi.
 
@@ -53,7 +53,7 @@ Buka `https://<domain-anda>/masuk` dan masuk dengan akun admin tadi.
 *Advanced → Cron Jobs* → **Once Per Minute** (`* * * * *`), perintah:
 
 ```
-/opt/alt/php84/usr/bin/php /home/<akun-cpanel>/ruang-kuesioner/artisan schedule:run >/dev/null 2>&1
+/opt/alt/php83/usr/bin/php /home/<akun-cpanel>/ruang-kuesioner/artisan schedule:run >/dev/null 2>&1
 ```
 
 ## 6. Memperbarui setelah ada perubahan di GitHub (pull)
@@ -72,3 +72,5 @@ Lewat Terminal juga bisa: `cd ~/ruang-kuesioner && git pull && bash deploy.sh`.
 - **Halaman admin wajib login** (`ADMIN_OPEN_ON_LAN=false`). Responden tetap mengisi tanpa login lewat tautan `https://<domain-anda>/f/<kode>`.
 - **Lupa kata sandi admin**: jalankan lagi `php artisan admin:buat admin3526`.
 - **Galat 500**: lihat `storage/logs/laravel.log`, dan pastikan `storage` dan `bootstrap/cache` bisa ditulis (`chmod -R 775 storage bootstrap/cache`).
+- **`Unknown column 'username'` (atau kolom lain tidak ditemukan)**: migrasi database belum dijalankan setelah pull. Jalankan **Deploy HEAD Commit**, atau di Terminal `cd ~/ruang-kuesioner && php artisan migrate --force`.
+- **Halaman galat menampilkan detail kode/SQL**: berarti `APP_DEBUG=true`. Di server wajib `APP_ENV=production` dan `APP_DEBUG=false` di `.env`, lalu `php artisan optimize`.
