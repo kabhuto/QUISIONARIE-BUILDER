@@ -51,7 +51,7 @@ php artisan test
 - File berikut **tidak** ada di repositori dan dibuat di masing-masing komputer: `.env`, `database/database.sqlite` (semua kuesioner dan respons), logo yang diunggah (`storage/app/public`), dan `vendor/`.
 - Untuk memindahkan kuesioner beserta responsnya antarkomputer, gunakan **Ekspor JSON** di dashboard, lalu **Impor JSON** di komputer tujuan.
 - Di komputer pengembangan, `ADMIN_OPEN_ON_LAN=true` di `.env` membuka halaman admin tanpa login dari komputer itu dan jaringan lokal. Di server publik nilainya `false`, sehingga admin wajib masuk lewat `/masuk`. Akun admin dibuat dengan `php artisan admin:buat admin3526` (username) atau `php artisan admin:buat email@anda.com`; di `/masuk` admin mengetik username atau email.
-- Pemasangan di hosting (Hostinger): lihat [DEPLOY-HOSTINGER.md](DEPLOY-HOSTINGER.md).
+- Pemasangan di hosting: Jagoan Hosting/cPanel lihat [DEPLOY-JAGOANHOSTING.md](DEPLOY-JAGOANHOSTING.md), Hostinger lihat [DEPLOY-HOSTINGER.md](DEPLOY-HOSTINGER.md).
 
 ## Fitur utama
 

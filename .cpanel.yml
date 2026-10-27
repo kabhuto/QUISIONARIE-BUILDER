@@ -1,0 +1,6 @@
+# cPanel (Jagoan Hosting) → Git Version Control → Manage → Pull or Deploy → "Deploy HEAD Commit"
+# runs these tasks inside the cloned repository. Output: ~/.cpanel/logs/ (vc_*_git_deploy.log).
+---
+deployment:
+  tasks:
+    - /bin/bash deploy.sh
