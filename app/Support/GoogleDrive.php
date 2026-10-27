@@ -183,7 +183,7 @@ class GoogleDrive
      * One uploaded file or signature as base64, named so it sorts by response and question.
      *
      * @param  array<string, mixed>  $question
-     * @return array{key: string, name: string, mime: string, data: string}|null
+     * @return array{key: string, name: string, mime: string, data: string, signature?: bool}|null
      */
     private static function file(array $question, mixed $value, SurveyResponse $response, ?int $row): ?array
     {
@@ -194,7 +194,7 @@ class GoogleDrive
                 return null;
             }
 
-            return ['key' => $question['id'].($row !== null ? '.'.$row : ''), 'name' => $base.'.png', 'mime' => 'image/png', 'data' => $match[1]];
+            return ['key' => $question['id'].($row !== null ? '.'.$row : ''), 'name' => $base.'.png', 'mime' => 'image/png', 'data' => $match[1], 'signature' => true];
         }
 
         if (! Survey::isUploadPath($value) || ! Storage::disk('public')->exists($value)) {

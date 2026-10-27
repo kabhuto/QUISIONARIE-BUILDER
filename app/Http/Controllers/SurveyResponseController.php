@@ -44,7 +44,7 @@ class SurveyResponseController extends Controller
 
     /**
      * All responses as an Excel/Google Sheets workbook: one row per response, file answers and the
-     * detail page as clickable links, GPS accuracy next to each location.
+     * detail page as clickable links, signatures as pictures, GPS accuracy next to each location.
      */
     public function exportXlsx(Survey $survey): BinaryFileResponse
     {
@@ -60,7 +60,12 @@ class SurveyResponseController extends Controller
                 return [
                     ++$position,
                     ...self::metadata($response),
-                    ...array_map(function (array $question) use ($response): string {
+                    ...array_map(function (array $question) use ($response): string|array {
+                        // A drawn signature goes into its cell as a picture.
+                        $answer = $response->answerTo($question['id']);
+                        if ($question['type'] === 'signature' && Survey::isSignatureImage($answer)) {
+                            return Xlsx::image((string) base64_decode(substr($answer, strlen('data:image/png;base64,'))));
+                        }
                         $text = $response->displayAnswer($question);
                         $accuracy = $response->answers[$question['id'].Survey::ACCURACY_SUFFIX] ?? null;
 

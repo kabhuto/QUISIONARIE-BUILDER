@@ -63,6 +63,36 @@ class SpreadsheetExportTest extends TestCase
         $this->assertSame('AA', Xlsx::column(26));
     }
 
+    public function test_signatures_are_pictures_in_the_xlsx_workbook(): void
+    {
+        $survey = $this->survey();
+        $blocks = $survey->blocks;
+        $blocks[0]['questions'][] = ['id' => 'q-ttd', 'type' => 'signature', 'label' => 'Tanda tangan', 'required' => false, 'code_length' => 0, 'options' => []];
+        $survey->update(['blocks' => $blocks]);
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAMAAAABCAYAAAAb4BS0AAAAEUlEQVR42mNkYPhfz8DAwAAADgYCAWDA3ZQAAAAASUVORK5CYII=');
+        $survey->responses()->create(['answers' => ['q-nama' => 'Alfin', 'q-ttd' => 'data:image/png;base64,'.base64_encode($png)]]);
+        $survey->responses()->create(['answers' => ['q-nama' => 'Tanpa tanda tangan']]);
+
+        $download = $this->get(route('surveys.responses.export-xlsx', $survey))->assertOk();
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($download->baseResponse->getFile()->getPathname()));
+        $sheet = (string) $zip->getFromName('xl/worksheets/sheet1.xml');
+        $drawing = (string) $zip->getFromName('xl/drawings/drawing1.xml');
+        $image = $zip->getFromName('xl/media/image1.png');
+        $types = (string) $zip->getFromName('[Content_Types].xml');
+        $zip->close();
+
+        $this->assertSame($png, $image);
+        $this->assertStringContainsString('<drawing r:id="rId1"/>', $sheet);
+        $this->assertStringContainsString('<row r="2" ht="51" customHeight="1">', $sheet);
+        $this->assertStringNotContainsString('[tanda tangan]', $sheet);
+        // One picture, on row 2 in the signature column (the 13th, after the metadata and five answers).
+        $this->assertSame(1, substr_count($drawing, '<xdr:oneCellAnchor>'));
+        $this->assertStringContainsString('<xdr:col>12</xdr:col><xdr:colOff>38100</xdr:colOff><xdr:row>1</xdr:row>', $drawing);
+        $this->assertStringContainsString('<xdr:ext cx="1714500" cy="571500"/>', $drawing);
+        $this->assertStringContainsString('Extension="png"', $types);
+    }
+
     public function test_the_responses_page_maps_every_location_with_hover_links_to_the_rows(): void
     {
         $survey = $this->survey();

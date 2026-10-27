@@ -27,11 +27,13 @@ function doPost(e) {
 
     // Berkas: kirim ulang respons yang sama menimpa berkas bernama sama, bukan menggandakannya.
     const files = {};
+    const tandaTangan = {};
     (data.files || []).forEach(function (f) {
       const lama = folderTanggal.getFilesByName(f.name);
       while (lama.hasNext()) lama.next().setTrashed(true);
       const blob = Utilities.newBlob(Utilities.base64Decode(f.data), f.mime, f.name);
       files[f.key] = folderTanggal.createFile(blob).getUrl();
+      if (f.signature) tandaTangan[f.key] = 'data:' + f.mime + ';base64,' + f.data;
     });
 
     const sheet = rekap(folderKuesioner, data.survey.sheet);
@@ -40,11 +42,15 @@ function doPost(e) {
       'Waktu kirim': data.response.submitted_at,
       'Detail di aplikasi': data.response.detail_url,
     };
+    const gambar = {};
     data.row.forEach(function (sel) {
       const tautan = (sel[2] || []).map(function (key) { return files[key]; }).filter(String);
       nilai[sel[0]] = tautan.length ? tautan.join('\n') : sel[1];
+      const ttd = (sel[2] || []).map(function (key) { return tandaTangan[key]; }).filter(String);
+      if (ttd.length) gambar[sel[0]] = { gambar: ttd[0], tautan: tautan[0] };
     });
-    tulisBaris(sheet, nilai);
+    const nomor = tulisBaris(sheet, nilai);
+    tempelGambar(sheet, nomor, gambar);
 
     return balas({ ok: true, folder_url: folderTanggal.getUrl(), sheet_url: sheet.getParent().getUrl(), files: files });
   } catch (err) {
@@ -86,6 +92,24 @@ function tulisBaris(sheet, nilai) {
   const posisi = ids.indexOf(String(nilai['ID respons']));
   const nomor = posisi === -1 ? sheet.getLastRow() + 1 : posisi + 2;
   sheet.getRange(nomor, 1, 1, baris.length).setValues([baris]);
+  return nomor;
+}
+
+// Tanda tangan tampil sebagai gambar di selnya; tautan ke berkasnya ada di catatan sel.
+// Jika gambar gagal dipasang, sel tetap berisi tautan.
+function tempelGambar(sheet, nomor, gambar) {
+  const judul = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  Object.keys(gambar).forEach(function (kolom) {
+    const sel = sheet.getRange(nomor, judul.indexOf(kolom) + 1);
+    try {
+      sel.setValue(SpreadsheetApp.newCellImage().setSourceUrl(gambar[kolom].gambar).setAltTextTitle('Tanda tangan').build());
+      sel.setNote(gambar[kolom].tautan || '');
+      if (sheet.getRowHeight(nomor) < 70) sheet.setRowHeight(nomor, 70);
+      if (sheet.getColumnWidth(sel.getColumn()) < 190) sheet.setColumnWidth(sel.getColumn(), 190);
+    } catch (err) {
+      // Tetap tautan.
+    }
+  });
 }
 
 function balas(isi) {
