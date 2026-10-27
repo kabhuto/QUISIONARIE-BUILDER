@@ -1077,6 +1077,8 @@
 
     const GOOD_ACCURACY = 10;
     const SETTLE_MS = 10000;
+    // Phones and tablets (touch screens) usually have GPS; laptops and desktops do not.
+    const hasGps = window.matchMedia('(pointer: coarse)').matches;
     const locationPattern = /^(-?\d{1,2}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/;
 
     function maskPattern(mask) {
@@ -1145,9 +1147,10 @@
             showLocation(container);
             field.dispatchEvent(new Event('input', { bubbles: true }));
         };
+        // Laptops and PCs have no GPS: their position is guessed from Wi-Fi, often hundreds of metres off.
         const timer = setTimeout(() => finish(best
-            ? `Akurasi terbaik baru ${Math.round(best.coords.accuracy)} m, belum memenuhi batas ${maxAccuracy} m. Pindah ke tempat terbuka atau dekat jendela, aktifkan mode akurasi tinggi, lalu coba lagi.`
-            : 'Lokasi tidak dapat diambil. Pastikan GPS aktif, lalu coba lagi.'), 30000);
+            ? `Akurasi terbaik baru ${Math.round(best.coords.accuracy)} m, belum memenuhi batas ${maxAccuracy} m. ${hasGps ? 'Pindah ke tempat terbuka atau dekat jendela, aktifkan mode akurasi tinggi, lalu coba lagi.' : 'Laptop/PC tidak punya GPS, jadi lokasinya hanya perkiraan dari Wi-Fi. Isi formulir ini lewat HP.'}`
+            : 'Lokasi tidak dapat diambil. Pastikan GPS/layanan lokasi aktif, lalu coba lagi.'), 30000);
         status.textContent = 'Mencari sinyal GPS…';
         button.disabled = true;
         watch = navigator.geolocation.watchPosition(position => {
@@ -1162,6 +1165,11 @@
             status.textContent = `Mencari sinyal GPS… akurasi saat ini ${Math.round(best.coords.accuracy)} m (harus ${maxAccuracy} m atau lebih baik).`;
         }, error => {
             if (error.code === 1) finish('Izin lokasi ditolak. Izinkan akses lokasi di pengaturan browser, lalu tekan tombol lagi.');
+            if (error.code === 2 && !best) {
+                finish(hasGps
+                    ? 'Lokasi tidak tersedia. Aktifkan GPS/lokasi di HP, lalu coba lagi.'
+                    : 'Lokasi tidak tersedia di komputer ini. Di Windows: Pengaturan → Privasi & keamanan → Lokasi → aktifkan "Layanan lokasi", sambungkan Wi-Fi, lalu coba lagi. Lebih tepat lewat HP.');
+            }
         }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
     });
 
