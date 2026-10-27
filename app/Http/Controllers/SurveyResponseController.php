@@ -12,6 +12,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SurveyResponseController extends Controller
 {
+    /**
+     * When and from what each response was sent, at the start of every export row.
+     */
+    private const METADATA_COLUMNS = ['Waktu kirim', 'Waktu mulai mengisi', 'Lama mengisi (detik)', 'Alamat IP', 'Perangkat', 'User agent'];
+
     public function index(Survey $survey): View
     {
         $responses = $survey->responses()->latest()->get();
@@ -20,6 +25,7 @@ class SurveyResponseController extends Controller
             'survey' => $survey,
             'responses' => $responses,
             'summary' => SurveySummary::build($survey, $responses),
+            'overview' => SurveySummary::overview($responses),
             'previewQuestions' => array_slice(array_values(array_filter($survey->questions(), fn (array $question): bool => $question['type'] !== 'table')), 0, 3),
         ]);
     }
@@ -49,11 +55,11 @@ class SurveyResponseController extends Controller
         Xlsx::write(
             $path,
             $survey->title,
-            ['No', 'Waktu kirim', ...array_map(fn (array $question): string => $question['number'].'. '.$question['text'], $questions), 'Detail respons'],
+            ['No', ...self::METADATA_COLUMNS, ...array_map(fn (array $question): string => $question['number'].'. '.$question['text'], $questions), 'Detail respons'],
             $survey->responses()->oldest()->lazy()->map(function (SurveyResponse $response) use ($survey, $questions, &$position): array {
                 return [
                     ++$position,
-                    $response->created_at->timezone(config('app.timezone'))->format('Y-m-d H:i:s'),
+                    ...self::metadata($response),
                     ...array_map(function (array $question) use ($response): string {
                         $text = $response->displayAnswer($question);
                         $accuracy = $response->answers[$question['id'].Survey::ACCURACY_SUFFIX] ?? null;
@@ -80,7 +86,7 @@ class SurveyResponseController extends Controller
             fwrite($output, "\xEF\xBB\xBF");
             fputcsv($output, [
                 'No',
-                'Waktu kirim',
+                ...self::METADATA_COLUMNS,
                 ...array_map(fn (array $question): string => $question['number'].' '.$question['text'], $questions),
             ]);
 
@@ -88,12 +94,29 @@ class SurveyResponseController extends Controller
             foreach ($survey->responses()->oldest()->lazy() as $response) {
                 fputcsv($output, [
                     ++$position,
-                    $response->created_at->format('Y-m-d H:i:s'),
+                    ...self::metadata($response),
                     ...array_map(fn (array $question): string => $response->displayAnswer($question), $questions),
                 ]);
             }
 
             fclose($output);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * @return list<string|int>
+     */
+    private static function metadata(SurveyResponse $response): array
+    {
+        $timezone = config('app.timezone');
+
+        return [
+            $response->created_at->timezone($timezone)->format('Y-m-d H:i:s'),
+            $response->started_at?->timezone($timezone)->format('Y-m-d H:i:s') ?? '',
+            $response->durationSeconds() ?? '',
+            $response->ip_address ?? '',
+            $response->deviceLabel(),
+            $response->user_agent ?? '',
+        ];
     }
 }

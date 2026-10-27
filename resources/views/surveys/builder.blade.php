@@ -35,6 +35,7 @@
     $selectedOrientation = old('settings.orientation', $settings['orientation']);
     $selectedPeriodType = old('settings.period_type', $settings['period_type']);
     $selectedTheme = old('settings.theme', $settings['theme']);
+    $selectedThemeColor = old('settings.theme_color', $settings['theme_color'] ?? null) ?: '#d6336c';
     $selectedNumbering = old('settings.numbering', $settings['numbering']);
 @endphp
 <!DOCTYPE html>
@@ -44,7 +45,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $isNew ? 'Kuesioner baru' : $survey->title }} | Ruang Kuesioner</title>
-    @include('partials.theme')
+    @include('partials.theme', ['accent' => true])
     <link rel="stylesheet" href="{{ asset('css/builder.css') }}">
     <link rel="stylesheet" href="{{ asset('css/ui.css') }}">
 </head>
@@ -60,6 +61,7 @@
             <span class="context-divider">/</span> {{ $isNew ? 'KUESIONER BARU' : str($survey->title)->limit(40) }}
         </div>
         <div class="topbar-actions">
+            @include('partials.accent-picker')
             @include('partials.theme-toggle')
             <button class="button button-ghost" type="submit" form="builder-form" name="intent" value="print" title="Simpan lalu buka tampilan cetak kertas">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z"/></svg>
@@ -249,13 +251,42 @@
                     <div class="setting-label"><span>Tampilan responden</span><span class="setting-value">WARNA</span></div>
                     <div class="theme-options">
                         @foreach ($themes as $theme => $definition)
-                            <label class="theme-option" title="{{ $definition['label'] }}">
-                                <input class="sr-only" type="radio" name="settings[theme]" value="{{ $theme }}" @checked($selectedTheme === $theme)>
-                                <span style="--swatch: {{ $definition['color'] }}"></span>
-                                <small>{{ $definition['label'] }}</small>
-                            </label>
+                            @if ($theme === 'custom')
+                                <label @class(['theme-option', 'theme-option-custom', 'has-color' => $selectedTheme === 'custom']) title="Pilih warna sendiri" style="--swatch: {{ $selectedThemeColor }}" data-theme-custom>
+                                    <input class="sr-only" type="radio" name="settings[theme]" value="custom" @checked($selectedTheme === 'custom')>
+                                    <span></span>
+                                    <input type="color" name="settings[theme_color]" value="{{ $selectedThemeColor }}" aria-label="Warna kustom">
+                                    <small>{{ $definition['label'] }}</small>
+                                </label>
+                            @else
+                                <label class="theme-option" title="{{ $definition['label'] }}">
+                                    <input class="sr-only" type="radio" name="settings[theme]" value="{{ $theme }}" @checked($selectedTheme === $theme)>
+                                    <span style="--swatch: {{ $definition['color'] }}"></span>
+                                    <small>{{ $definition['label'] }}</small>
+                                </label>
+                            @endif
                         @endforeach
                     </div>
+                    @error('settings.theme_color')<p class="setting-note is-error">{{ $message }}</p>@enderror
+                    <script>
+                        // Opening the colour input chooses the "Kustom" option; the colour only counts while it is chosen.
+                        (() => {
+                            const custom = document.querySelector('[data-theme-custom]');
+                            const radio = custom.querySelector('input[type=radio]');
+                            const color = custom.querySelector('input[type=color]');
+                            const sync = () => {
+                                custom.classList.toggle('has-color', radio.checked);
+                                custom.style.setProperty('--swatch', color.value);
+                            };
+                            color.addEventListener('click', () => {
+                                if (radio.checked) return;
+                                radio.checked = true;
+                                radio.dispatchEvent(new Event('change', { bubbles: true }));
+                            });
+                            color.addEventListener('input', sync);
+                            document.querySelectorAll('input[name="settings[theme]"]').forEach(input => input.addEventListener('change', sync));
+                        })();
+                    </script>
                     <label class="required-toggle">
                         <input type="hidden" name="settings[confidential]" value="0">
                         <input type="checkbox" name="settings[confidential]" value="1" id="confidential-toggle" @checked($isConfidential)>

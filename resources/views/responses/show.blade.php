@@ -64,6 +64,23 @@
     @endphp
 
     <div class="detail-sheet">
+        <section class="detail-block detail-meta">
+            <header class="detail-block-head"><span>METADATA.</span> Waktu dan perangkat pengirim</header>
+            <dl>
+                <div class="detail-row"><dt>Waktu kirim</dt><dd>{{ $response->created_at->translatedFormat('l, d F Y · H:i:s') }}</dd></div>
+                <div class="detail-row"><dt>Mulai mengisi</dt><dd @class(['is-empty' => ! $response->started_at])>{{ $response->started_at?->translatedFormat('l, d F Y · H:i:s') ?? 'Tidak tercatat' }}</dd></div>
+                <div class="detail-row"><dt>Lama mengisi</dt><dd @class(['is-empty' => $response->durationLabel() === ''])>{{ $response->durationLabel() ?: 'Tidak tercatat' }}</dd></div>
+                <div class="detail-row"><dt>Alamat IP</dt><dd @class(['mono' => $response->ip_address, 'is-empty' => ! $response->ip_address])>{{ $response->ip_address ?? 'Tidak tercatat' }}</dd></div>
+                <div class="detail-row"><dt>Perangkat</dt>
+                    @if ($response->user_agent)
+                        <dd>{{ $response->deviceLabel() }}<small class="detail-agent">{{ $response->user_agent }}</small></dd>
+                    @else
+                        <dd class="is-empty">Tidak tercatat</dd>
+                    @endif
+                </div>
+                <div class="detail-row"><dt>Dikirim melalui</dt><dd>{{ ($response->source ?? 'form') === 'api' ? 'API' : 'Formulir web' }}</dd></div>
+            </dl>
+        </section>
         @foreach ($survey->blocks as $blockIndex => $block)
             <section class="detail-block">
                 <header class="detail-block-head"><span>BLOK {{ \App\Models\Survey::roman($blockIndex + 1) }}.</span> {{ $block['title'] }}</header>

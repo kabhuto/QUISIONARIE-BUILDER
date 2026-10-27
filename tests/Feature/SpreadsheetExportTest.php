@@ -55,7 +55,7 @@ class SpreadsheetExportTest extends TestCase
         $this->assertStringContainsString('<t xml:space="preserve">101. Nama</t>', $sheet);
         $this->assertStringContainsString('Nor Halimah &amp; &quot;Rara&quot;', $sheet);
         $this->assertStringContainsString('<t xml:space="preserve">0012</t>', $sheet);
-        $this->assertStringContainsString('<c r="E2"><v>8</v></c>', $sheet);
+        $this->assertStringContainsString('<c r="J2"><v>8</v></c>', $sheet);
         $this->assertStringContainsString('-7.0453, 112.738 (±12 m)', $sheet);
         $this->assertStringContainsString('HYPERLINK(&quot;'.asset('storage/'.$response->answers['q-foto']), $sheet);
         $this->assertStringContainsString(route('surveys.responses.show', [$survey, $response]), $sheet);

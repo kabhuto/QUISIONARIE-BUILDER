@@ -32,6 +32,7 @@ class SurveyJson
             'responses' => $survey->responses()->oldest()->get()->map(fn (SurveyResponse $response): array => [
                 'id' => $response->id,
                 'submitted_at' => $response->created_at->toIso8601String(),
+                ...self::metadata($response),
                 'answers' => $response->answers,
                 ...($response->flags ? ['flags' => $response->flags] : []),
             ])->all(),
@@ -68,10 +69,27 @@ class SurveyJson
         return [
             'id' => $response->id,
             'submitted_at' => $response->created_at?->toIso8601String(),
+            ...self::metadata($response),
             'source' => $response->source ?? 'form',
             'assignment_id' => $response->assignment?->id,
             'answers' => $response->answers ?? (object) [],
             'flags' => $response->flags,
+        ];
+    }
+
+    /**
+     * When the form was opened and the device that sent it.
+     *
+     * @return array{started_at: ?string, duration_seconds: ?int, ip_address: ?string, device: string, user_agent: ?string}
+     */
+    private static function metadata(SurveyResponse $response): array
+    {
+        return [
+            'started_at' => $response->started_at?->toIso8601String(),
+            'duration_seconds' => $response->durationSeconds(),
+            'ip_address' => $response->ip_address,
+            'device' => $response->deviceLabel(),
+            'user_agent' => $response->user_agent,
         ];
     }
 

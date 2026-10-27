@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@yield('title') | Ruang Kuesioner</title>
-    @include('partials.theme')
+    @include('partials.theme', ['accent' => true])
     <link rel="stylesheet" href="{{ asset('css/builder.css') }}">
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     <link rel="stylesheet" href="{{ asset('css/ui.css') }}">
@@ -30,6 +30,7 @@
             @endforeach
         </nav>
         <div class="topbar-tools">
+            @include('partials.accent-picker', ['showLabel' => true])
             @include('partials.theme-toggle', ['showLabel' => true])
             @auth
                 <span class="user-chip" title="{{ auth()->user()->loginName() }}">

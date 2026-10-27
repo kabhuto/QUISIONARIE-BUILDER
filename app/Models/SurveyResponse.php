@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['answers', 'flags', 'source', 'drive'])]
+#[Fillable(['answers', 'flags', 'source', 'drive', 'started_at', 'ip_address', 'user_agent'])]
 class SurveyResponse extends Model
 {
     /**
@@ -22,7 +22,70 @@ class SurveyResponse extends Model
             'answers' => 'array',
             'flags' => 'array',
             'drive' => 'array',
+            'started_at' => 'datetime',
         ];
+    }
+
+    /**
+     * The sender's device in a few words, from the browser's user agent: "Android · Chrome".
+     */
+    public function deviceLabel(): string
+    {
+        $agent = (string) $this->user_agent;
+        if ($agent === '') {
+            return '';
+        }
+
+        $system = match (true) {
+            str_contains($agent, 'iPad') => 'iPad',
+            str_contains($agent, 'iPhone') => 'iPhone',
+            str_contains($agent, 'Android') => 'Android',
+            str_contains($agent, 'Windows') => 'Windows',
+            str_contains($agent, 'Mac OS X') || str_contains($agent, 'Macintosh') => 'macOS',
+            str_contains($agent, 'CrOS') => 'ChromeOS',
+            str_contains($agent, 'Linux') => 'Linux',
+            default => 'Lainnya',
+        };
+        $browser = match (true) {
+            str_contains($agent, 'SamsungBrowser') => 'Samsung Internet',
+            str_contains($agent, 'Edg/') => 'Edge',
+            str_contains($agent, 'OPR/') || str_contains($agent, 'Opera') => 'Opera',
+            str_contains($agent, 'Firefox/') || str_contains($agent, 'FxiOS') => 'Firefox',
+            str_contains($agent, 'Chrome/') || str_contains($agent, 'CriOS') => 'Chrome',
+            str_contains($agent, 'Safari/') => 'Safari',
+            default => '',
+        };
+
+        return $browser === '' ? $system : $system.' · '.$browser;
+    }
+
+    /**
+     * Seconds from opening the form to sending it, when the form reported when it was opened.
+     */
+    public function durationSeconds(): ?int
+    {
+        if (! $this->started_at || ! $this->created_at || $this->started_at->greaterThan($this->created_at)) {
+            return null;
+        }
+
+        return (int) $this->started_at->diffInSeconds($this->created_at);
+    }
+
+    /**
+     * The filling time as "4 mnt 12 dtk".
+     */
+    public function durationLabel(): string
+    {
+        $seconds = $this->durationSeconds();
+        if ($seconds === null) {
+            return '';
+        }
+
+        $hours = intdiv($seconds, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+        $rest = $seconds % 60;
+
+        return trim(($hours ? $hours.' jam ' : '').($hours || $minutes ? $minutes.' mnt ' : '').$rest.' dtk');
     }
 
     /**

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccentColorController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\ApiAccessController;
 use App\Http\Controllers\AssignmentController;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
 // Admin sign-in.
+Route::get('/warna/{hex}.css', [AccentColorController::class, 'css'])->where('hex', '[0-9a-f]{6}')->name('accent.css');
 Route::get('/masuk', [LoginController::class, 'create'])->name('login');
 Route::post('/masuk', [LoginController::class, 'store'])->middleware('throttle:10,1')->name('login.store');
 Route::post('/keluar', [LoginController::class, 'destroy'])->name('logout');
@@ -58,6 +60,7 @@ Route::middleware('admin')->group(function (): void {
     Route::post('/admin', [AdminUserController::class, 'store'])->name('admins.store');
     Route::put('/admin/{admin}', [AdminUserController::class, 'update'])->name('admins.update');
     Route::delete('/admin/{admin}', [AdminUserController::class, 'destroy'])->name('admins.destroy');
+    Route::put('/akun/warna', [AccentColorController::class, 'update'])->name('accent.update');
     Route::get('/surveys/{survey}/google-drive', [GoogleDriveController::class, 'show'])->name('google-drive.show');
     Route::put('/surveys/{survey}/google-drive', [GoogleDriveController::class, 'update'])->name('google-drive.update');
     Route::post('/surveys/{survey}/google-drive/kirim', [GoogleDriveController::class, 'sendAll'])->name('google-drive.send-all');

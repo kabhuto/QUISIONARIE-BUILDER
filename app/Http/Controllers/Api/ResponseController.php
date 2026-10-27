@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * Responses over the API: read them, check answers without saving (the form engine as a service),
@@ -138,7 +139,13 @@ class ResponseController extends Controller
      */
     private function save(Survey $survey, array $result, mixed $submittedAt): SurveyResponse
     {
-        $response = $survey->responses()->create(['answers' => $result['answers'], 'flags' => $result['flags'], 'source' => 'api']);
+        $response = $survey->responses()->create([
+            'answers' => $result['answers'],
+            'flags' => $result['flags'],
+            'source' => 'api',
+            'ip_address' => request()->ip(),
+            'user_agent' => Str::limit((string) request()->userAgent(), 500, ''),
+        ]);
 
         if ($submittedAt) {
             $time = Carbon::parse((string) $submittedAt);

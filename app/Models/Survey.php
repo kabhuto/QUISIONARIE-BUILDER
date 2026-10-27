@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Palette;
 use App\Support\Piping;
 use App\Support\SurveyLogic;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -247,14 +248,19 @@ class Survey extends Model
     ];
 
     /**
-     * Accent colours for the respondent form.
+     * Accent colours for the respondent form; 'custom' takes any colour from settings.theme_color.
      */
     public const THEMES = [
         'orange' => ['label' => 'Oranye', 'color' => '#f26b1d'],
-        'teal' => ['label' => 'Hijau', 'color' => '#087e78'],
+        'teal' => ['label' => 'Tosca', 'color' => '#087e78'],
+        'green' => ['label' => 'Hijau', 'color' => '#2f9e44'],
         'blue' => ['label' => 'Biru', 'color' => '#1f63b0'],
         'purple' => ['label' => 'Ungu', 'color' => '#6a4bb0'],
+        'pink' => ['label' => 'Pink', 'color' => '#d6336c'],
+        'red' => ['label' => 'Merah', 'color' => '#c92a2a'],
+        'yellow' => ['label' => 'Kuning', 'color' => '#b08800'],
         'slate' => ['label' => 'Abu', 'color' => '#394a55'],
+        'custom' => ['label' => 'Kustom', 'color' => null],
     ];
 
     public const DEFAULT_SETTINGS = [
@@ -263,6 +269,7 @@ class Survey extends Model
         'period_type' => 'none',
         'period_value' => null,
         'theme' => 'orange',
+        'theme_color' => null,
         'numbering' => 'block',
         'thank_you_message' => 'Terima kasih, jawaban Anda sudah kami terima.',
         'confidential' => true,
@@ -449,7 +456,20 @@ class Survey extends Model
 
     public function themeColor(): string
     {
-        return self::THEMES[$this->formSettings()['theme']]['color'] ?? self::THEMES['orange']['color'];
+        $settings = $this->formSettings();
+        if ($settings['theme'] === 'custom' && Palette::isHex($settings['theme_color'])) {
+            return Palette::normalize($settings['theme_color']);
+        }
+
+        return self::THEMES[$settings['theme']]['color'] ?? self::THEMES['orange']['color'];
+    }
+
+    /**
+     * Text colour that reads well on the form's accent (buttons, chosen options).
+     */
+    public function themeInk(): string
+    {
+        return Palette::ink($this->themeColor());
     }
 
     public function periodLabel(): ?string

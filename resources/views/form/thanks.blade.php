@@ -8,7 +8,7 @@
     @include('partials.theme')
     <link rel="stylesheet" href="{{ asset('css/fill.css') }}">
 </head>
-<body class="fill-page" style="--accent: {{ $survey->themeColor() }}">
+<body class="fill-page" style="--accent: {{ $survey->themeColor() }}; --accent-ink: {{ $survey->themeInk() }}">
     @include('partials.theme-toggle', ['class' => 'theme-toggle-floating'])
     <main class="fill-thanks">
         <section class="cawi-card">

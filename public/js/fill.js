@@ -7,8 +7,10 @@
     const blocks = [...form.querySelectorAll('.fill-block')];
     const note = document.querySelector('#fill-note');
     const draftStatus = document.querySelector('[data-draft-status]');
-    const progressBar = document.querySelector('[data-progress-bar]');
+    const progressBars = [...document.querySelectorAll('[data-progress-bar]')];
     const progressText = document.querySelector('[data-progress-text]');
+    const startedAt = form.querySelector('[data-started-at]');
+    if (startedAt && !startedAt.value) startedAt.value = String(Date.now());
 
     const OTHER_VALUE = 'Lainnya';
     const OTHER_SUFFIX = '__lainnya';
@@ -437,7 +439,7 @@
         blocks.forEach(block => {
             const blockVisible = passes(conditionOf(block), known);
             block.hidden = !blockVisible;
-            document.querySelector(`[data-nav-block="${CSS.escape(block.dataset.blockId)}"]`)?.toggleAttribute('hidden', !blockVisible);
+            document.querySelector(`[data-nav-group="${CSS.escape(block.dataset.blockId)}"]`)?.toggleAttribute('hidden', !blockVisible);
             if (block.dataset.repeatSource) return processRoster(block, blockVisible, known);
             block.querySelectorAll('.fill-question').forEach(question => processQuestion(question, blockVisible, known));
         });
@@ -449,6 +451,7 @@
         updateChecks(known);
         updateCounters();
         updateProgress();
+        scheduleNav();
     }
 
     // Consistency checks appear as soon as their conditions hold (e.g. "Laki-laki" and "hamil").
@@ -468,17 +471,20 @@
     }
 
     // An error check must be fixed; a warning check must be confirmed before sending.
+    // While the navigation only looks (marking off), the checks are not highlighted.
+    let markChecks = true;
+    const CONFIRM_MESSAGE = 'Centang konfirmasi jika jawaban ini sudah benar.';
     function consistencyProblem(question) {
         for (const element of question.querySelectorAll('[data-check-id]:not([hidden])')) {
             if (!element.classList.contains('is-warning')) {
-                element.classList.add('needs-attention');
+                if (markChecks) element.classList.add('needs-attention');
                 return 'Jawaban tidak konsisten. Periksa kembali.';
             }
             if (!element.querySelector('input')?.checked) {
-                element.classList.add('needs-attention');
-                return 'Centang konfirmasi jika jawaban ini sudah benar.';
+                if (markChecks) element.classList.add('needs-attention');
+                return CONFIRM_MESSAGE;
             }
-            element.classList.remove('needs-attention');
+            if (markChecks) element.classList.remove('needs-attention');
         }
         return '';
     }
@@ -499,7 +505,7 @@
         const questions = editableQuestions();
         const answered = questions.filter(question => isAnswered(answerOf(question))).length;
         const percent = questions.length ? Math.round((answered / questions.length) * 100) : 0;
-        progressBar.style.width = `${percent}%`;
+        progressBars.forEach(bar => (bar.style.width = `${percent}%`));
         progressText.textContent = `${answered} dari ${questions.length} pertanyaan terisi`;
     }
 
@@ -995,7 +1001,7 @@
         // Chosen files cannot be kept in a draft; everything else can.
         const entries = [...new FormData(form).entries()].filter(([name, value]) => name.startsWith('answers[') && typeof value === 'string');
         try {
-            store.setItem(config.draftKey, JSON.stringify({ savedAt: Date.now(), entries }));
+            store.setItem(config.draftKey, JSON.stringify({ savedAt: Date.now(), startedAt: startedAt?.value, entries }));
             const time = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
             if (draftStatus) draftStatus.textContent = `Tersimpan sementara pukul ${time}.`;
         } catch {
@@ -1019,6 +1025,8 @@
             return;
         }
         if (!Array.isArray(draft?.entries) || !draft.entries.length) return;
+        // Filling began when the draft was first started, not when it was reopened.
+        if (startedAt && /^\d+$/.test(String(draft.startedAt ?? ''))) startedAt.value = String(Math.min(Number(draft.startedAt), Number(startedAt.value)));
 
         // Dynamic table rows were saved with whatever indexes they had; recreate them as 0..n-1.
         const rowMaps = new Map();
@@ -1212,6 +1220,223 @@
         scheduleDraft();
     });
 
+    // ── Block navigation, question status and the summary before sending ──
+    // Every question the respondent can answer gets a status, as in FASIH: Galat (an answer that
+    // breaks a rule), Peringatan (a consistency warning), Kosong (no answer) or Terisi.
+
+    var navReady = false;
+    var navFrame = 0;
+    const summary = document.querySelector('[data-summary]');
+    const STATUS_LABELS = { error: 'Galat', warning: 'Peringatan', empty: 'Kosong', filled: 'Terisi' };
+    const EMPTY_TEXTS = { error: 'Tidak ada galat.', warning: 'Tidak ada peringatan.', empty: 'Semua pertanyaan sudah terisi.', filled: 'Belum ada pertanyaan yang terisi.' };
+    let confirmedSubmit = false;
+    let summaryFilter = 'error';
+
+    function questionTitle(question) {
+        // The label as shown (with answers quoted in it), else the label as written.
+        const label = question.querySelector('.fill-label');
+        const numberNode = question.querySelector('.cawi-number');
+        let text = label ? label.textContent : '';
+        if (numberNode) text = text.replace(numberNode.textContent, '');
+        text = text.replace(/\*\s*$/, '').replace(/\s+/g, ' ').trim() || question.dataset.navLabel || '';
+        const row = question.closest('[data-roster-row]');
+        let rowName = '';
+        if (row) {
+            const rowLabel = row.querySelector('strong[data-row-label]')?.textContent.trim();
+            rowName = `Rincian ${row.querySelector('[data-row-number]')?.textContent ?? ''}${rowLabel ? ` (${rowLabel})` : ''}`;
+        }
+        return { number: question.dataset.navNumber || '', text: text || 'Pertanyaan', row: rowName };
+    }
+
+    // The question's status and, when something is wrong, what to fix.
+    function statusOf(question) {
+        markChecks = false;
+        const problem = problemWith(question);
+        markChecks = true;
+        const answered = isAnswered(answerOf(question));
+        const warnings = question.querySelectorAll('[data-check-id].is-warning:not([hidden])').length;
+        if (!answered) return { status: 'empty', message: problem, blocking: problem !== '' };
+        if (problem && problem !== CONFIRM_MESSAGE) return { status: 'error', message: problem, blocking: true };
+        if (warnings) return { status: 'warning', message: problem || 'Peringatan konsistensi sudah dikonfirmasi.', blocking: problem !== '' };
+        return { status: 'filled', message: '', blocking: false };
+    }
+
+    // Questions the respondent can answer, block by block, with their status.
+    function questionStates() {
+        return blocks.filter(block => !block.hidden).map(block => ({
+            block,
+            title: block.querySelector('.cawi-block-head h2')?.textContent.trim() ?? '',
+            items: [...block.querySelectorAll('.fill-question:not([data-type="info"]):not([data-type="calc"])')]
+                .filter(question => !question.hidden && !question.classList.contains('is-disabled'))
+                .map(question => ({ question, ...questionTitle(question), ...statusOf(question) })),
+        }));
+    }
+
+    function scheduleNav() {
+        if (!navReady) return;
+        cancelAnimationFrame(navFrame);
+        navFrame = requestAnimationFrame(updateNav);
+    }
+
+    function goTo(question) {
+        closeNav();
+        if (summary?.open) summary.close();
+        question.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        question.querySelector('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])')?.focus({ preventScroll: true });
+        question.classList.remove('is-located');
+        void question.offsetWidth;
+        question.classList.add('is-located');
+    }
+
+    function navButton(item, className) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = className;
+        const dot = document.createElement('i');
+        const number = document.createElement('b');
+        number.textContent = item.number;
+        button.append(dot, number);
+        button.navQuestion = item.question;
+        return button;
+    }
+
+    function updateNav() {
+        questionStates().forEach(({ block, items }) => {
+            const list = document.querySelector(`[data-nav-questions="${CSS.escape(block.dataset.blockId)}"]`);
+            const count = document.querySelector(`[data-nav-group="${CSS.escape(block.dataset.blockId)}"] [data-nav-count]`);
+            if (!list) return;
+            const answered = items.filter(item => item.status !== 'empty').length;
+            const errors = items.filter(item => item.status === 'error').length;
+            if (count) {
+                count.textContent = errors ? `${errors} galat` : `${answered}/${items.length}`;
+                count.classList.toggle('is-error', errors > 0);
+                count.classList.toggle('is-done', !errors && items.length > 0 && answered === items.length);
+            }
+            // Rebuild only when the questions changed (rows added, logic showed or hid some).
+            const key = items.map(item => `${item.question.dataset.questionId}:${item.question.dataset.row ?? ''}`).join('|');
+            if (list.dataset.key !== key) {
+                list.dataset.key = key;
+                list.replaceChildren(...items.map(item => {
+                    const entry = document.createElement('li');
+                    const button = navButton(item, 'nav-question');
+                    const text = document.createElement('span');
+                    text.textContent = item.row ? `${item.row} · ${item.text}` : item.text;
+                    button.append(text);
+                    entry.append(button);
+                    return entry;
+                }));
+            }
+            [...list.querySelectorAll('.nav-question')].forEach((button, index) => {
+                const item = items[index];
+                button.querySelector('i').className = `status-dot is-${item.status}`;
+                button.title = `${STATUS_LABELS[item.status]}${item.message ? `: ${item.message}` : ''}`;
+            });
+        });
+        if (summary?.open) renderSummary();
+    }
+
+    // ── Summary dialog ──
+
+    function renderSummary() {
+        const groups = questionStates();
+        const all = groups.flatMap(group => group.items);
+        const counts = { error: 0, warning: 0, empty: 0, filled: 0 };
+        all.forEach(item => counts[item.status]++);
+        Object.entries(counts).forEach(([status, count]) => {
+            summary.querySelector(`[data-summary-count="${status}"]`).textContent = count;
+        });
+        summary.querySelectorAll('[data-summary-filter]').forEach(tile => {
+            const active = tile.dataset.summaryFilter === summaryFilter;
+            tile.classList.toggle('is-active', active);
+            tile.setAttribute('aria-selected', String(active));
+        });
+
+        const list = summary.querySelector('[data-summary-list]');
+        const sections = groups.map(group => ({ ...group, items: group.items.filter(item => item.status === summaryFilter) })).filter(group => group.items.length);
+        if (!sections.length) {
+            const empty = document.createElement('p');
+            empty.className = 'summary-empty';
+            empty.textContent = EMPTY_TEXTS[summaryFilter];
+            list.replaceChildren(empty);
+        } else {
+            list.replaceChildren(...sections.map(section => {
+                const wrap = document.createElement('section');
+                const heading = document.createElement('h3');
+                heading.textContent = section.title;
+                const entries = document.createElement('ul');
+                section.items.forEach(item => {
+                    const entry = document.createElement('li');
+                    const button = navButton(item, `summary-item is-${item.status}`);
+                    button.querySelector('i').className = `status-dot is-${item.status}`;
+                    const copy = document.createElement('span');
+                    const title = document.createElement('strong');
+                    title.textContent = item.row ? `${item.row} · ${item.text}` : item.text;
+                    const detail = document.createElement('small');
+                    if (item.status === 'empty') detail.textContent = item.blocking ? 'Wajib diisi' : 'Tidak wajib, boleh dikosongkan';
+                    else detail.textContent = item.message;
+                    copy.append(title, detail);
+                    button.append(copy);
+                    entry.append(button);
+                    entries.append(entry);
+                });
+                wrap.append(heading, entries);
+                return wrap;
+            }));
+        }
+
+        const blocking = all.filter(item => item.blocking);
+        const requiredEmpty = blocking.filter(item => item.status === 'empty').length;
+        const errors = blocking.filter(item => item.status === 'error').length;
+        const unconfirmed = blocking.filter(item => item.status === 'warning').length;
+        const parts = [errors && `${errors} galat`, requiredEmpty && `${requiredEmpty} pertanyaan wajib yang kosong`, unconfirmed && `${unconfirmed} peringatan yang belum dikonfirmasi`].filter(Boolean);
+        const message = summary.querySelector('[data-summary-note]');
+        message.textContent = parts.length
+            ? `Perbaiki dulu: ${parts.join(', ')}.`
+            : (counts.empty ? `${counts.empty} pertanyaan tidak wajib masih kosong. Jawaban sudah dapat dikirim.` : 'Semua isian lengkap. Jawaban siap dikirim.');
+        message.classList.toggle('is-blocked', parts.length > 0);
+        summary.querySelector('[data-summary-lead]').textContent = `${all.length} pertanyaan · ${counts.filled + counts.warning} terisi`;
+        summary.querySelector('[data-summary-submit]').disabled = parts.length > 0;
+    }
+
+    function openSummary() {
+        if (!summary) return;
+        applyLogic();
+        const items = questionStates().flatMap(group => group.items);
+        // Open on what needs attention first.
+        summaryFilter = ['error', 'warning', 'empty', 'filled'].find(status => items.some(item => item.status === status && (status !== 'warning' || item.blocking)))
+            ?? (items.some(item => item.status === 'warning') ? 'warning' : 'filled');
+        renderSummary();
+        if (!summary.open) summary.showModal();
+    }
+
+    summary?.addEventListener('click', event => {
+        if (event.target === summary || event.target.closest('[data-summary-close]')) {
+            summary.close();
+            return;
+        }
+        const tile = event.target.closest('[data-summary-filter]');
+        if (tile) {
+            summaryFilter = tile.dataset.summaryFilter;
+            renderSummary();
+            return;
+        }
+        const item = event.target.closest('.summary-item');
+        if (item?.navQuestion) {
+            goTo(item.navQuestion);
+            return;
+        }
+        if (event.target.closest('[data-summary-submit]')) {
+            confirmedSubmit = true;
+            summary.close();
+            form.requestSubmit();
+        }
+    });
+    document.querySelectorAll('[data-open-summary]').forEach(button => button.addEventListener('click', () => {
+        closeNav();
+        openSummary();
+    }));
+
+    // Sending: mark every problem on the form, then show the summary; only its "Kirim" sends.
     form.addEventListener('submit', event => {
         applyLogic();
         let firstInvalid = null;
@@ -1221,10 +1446,16 @@
             if (problem && !firstInvalid) firstInvalid = question;
         });
 
+        if (!confirmedSubmit && summary) {
+            event.preventDefault();
+            openSummary();
+            return;
+        }
+        confirmedSubmit = false;
+
         if (firstInvalid) {
             event.preventDefault();
-            firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            firstInvalid.querySelector('input:not([type="hidden"]), select, textarea')?.focus({ preventScroll: true });
+            goTo(firstInvalid);
             note.textContent = 'Masih ada isian yang perlu diperbaiki.';
             return;
         }
@@ -1238,20 +1469,84 @@
         saveDraft();
     });
 
-    // Highlight the block currently on screen in the left-hand navigation.
+    // ── The block list: highlights the block on screen; a drawer on phones and tablets ──
+
+    const nav = document.querySelector('.cawi-nav');
+    const backdrop = document.querySelector('.cawi-nav-backdrop');
+    const navOpenButton = document.querySelector('[data-nav-open]');
     const navLinks = [...document.querySelectorAll('[data-nav-target]')];
+    let currentTarget = 'pengantar';
+
+    function openNav() {
+        nav?.classList.add('is-open');
+        if (backdrop) backdrop.hidden = false;
+        navOpenButton?.setAttribute('aria-expanded', 'true');
+        document.body.classList.add('nav-open');
+    }
+
+    function closeNav() {
+        if (!nav?.classList.contains('is-open')) return;
+        nav.classList.remove('is-open');
+        if (backdrop) backdrop.hidden = true;
+        navOpenButton?.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('nav-open');
+    }
+
+    navOpenButton?.addEventListener('click', openNav);
+    document.querySelectorAll('[data-nav-close]').forEach(element => element.addEventListener('click', closeNav));
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeNav();
+    });
+    nav?.addEventListener('click', event => {
+        const question = event.target.closest('.nav-question');
+        if (question?.navQuestion) {
+            goTo(question.navQuestion);
+            return;
+        }
+        const link = event.target.closest('.cawi-nav-link');
+        if (link) {
+            event.preventDefault();
+            closeNav();
+            document.getElementById(link.dataset.navTarget)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            history.replaceState(null, '', `#${link.dataset.navTarget}`);
+        }
+    });
+
+    function setCurrent(target) {
+        currentTarget = target;
+        navLinks.forEach(link => {
+            const active = link.dataset.navTarget === target;
+            link.classList.toggle('is-active', active);
+            link.closest('.cawi-nav-group')?.classList.toggle('is-open', active);
+        });
+        const link = navLinks.find(item => item.dataset.navTarget === target);
+        const label = document.querySelector('[data-mobilebar-block]');
+        const title = document.querySelector('[data-mobilebar-title]');
+        if (link && label && title) {
+            label.textContent = link.querySelector('span').firstChild.textContent.trim();
+            title.textContent = link.querySelector('small')?.textContent ?? document.title;
+        }
+    }
+
+    // The previous or next section the respondent can see (the cover, then the blocks the logic shows).
+    document.querySelectorAll('[data-block-step]').forEach(button => button.addEventListener('click', () => {
+        const sections = [document.getElementById('pengantar'), ...blocks].filter(section => section && !section.hidden);
+        const index = sections.findIndex(section => section.id === currentTarget);
+        const next = sections[Math.min(sections.length - 1, Math.max(0, index + Number(button.dataset.blockStep)))];
+        next?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+
     if ('IntersectionObserver' in window) {
         const observer = new IntersectionObserver(entries => {
-            entries.filter(entry => entry.isIntersecting).forEach(entry => {
-                navLinks.forEach(link => link.classList.toggle('is-active', link.dataset.navTarget === entry.target.id));
-            });
+            entries.filter(entry => entry.isIntersecting).forEach(entry => setCurrent(entry.target.id));
         }, { rootMargin: '-30% 0px -60% 0px' });
         navLinks.forEach(link => {
             const section = document.getElementById(link.dataset.navTarget);
             if (section) observer.observe(section);
         });
     }
-
+    setCurrent('pengantar');
+    navReady = true;
     restoreDraft();
     applyLogic();
 })();

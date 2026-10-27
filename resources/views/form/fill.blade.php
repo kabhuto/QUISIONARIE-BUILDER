@@ -26,7 +26,7 @@
         @include('partials.leaflet')
     @endif
 </head>
-<body class="fill-page" style="--accent: {{ $survey->themeColor() }}">
+<body class="fill-page" style="--accent: {{ $survey->themeColor() }}; --accent-ink: {{ $survey->themeInk() }}">
     @include('partials.theme-toggle', ['class' => 'theme-toggle-floating'])
     @if ($isPreview)
         <div class="preview-banner">
@@ -35,25 +35,47 @@
         </div>
     @endif
 
+    @if ($canSubmit || $isPreview)
+        {{-- Phones and tablets: the current block, its progress, and buttons to move between blocks. --}}
+        <div class="cawi-mobilebar" data-mobilebar>
+            <button class="mobilebar-menu" type="button" data-nav-open aria-controls="cawi-nav" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+                <span class="mobilebar-copy"><small data-mobilebar-block>PENGANTAR</small><strong data-mobilebar-title>{{ str($survey->title)->limit(40) }}</strong></span>
+            </button>
+            <button class="mobilebar-step" type="button" data-block-step="-1" aria-label="Blok sebelumnya"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+            <button class="mobilebar-step" type="button" data-block-step="1" aria-label="Blok berikutnya"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <div class="mobilebar-progress" aria-hidden="true"><span data-progress-bar></span></div>
+        </div>
+    @endif
+
     <div class="cawi-layout">
-        <aside class="cawi-nav" aria-label="Daftar blok">
+        <div class="cawi-nav-backdrop" data-nav-close hidden></div>
+        <aside class="cawi-nav" id="cawi-nav" aria-label="Daftar blok dan pertanyaan">
             <div class="cawi-nav-title">
                 <strong>{{ str($survey->title)->limit(48) }}</strong>
                 <small>{{ $survey->activity }}</small>
+                <button class="cawi-nav-close" type="button" data-nav-close aria-label="Tutup daftar blok">×</button>
             </div>
             <nav class="cawi-nav-links">
                 <a class="cawi-nav-link" href="#pengantar" data-nav-target="pengantar"><span>PENGANTAR</span></a>
                 @foreach ($survey->blocks as $blockIndex => $block)
-                    <a class="cawi-nav-link" href="#blok-{{ $block['id'] }}" data-nav-target="blok-{{ $block['id'] }}" data-nav-block="{{ $block['id'] }}">
-                        <span>BLOK {{ \App\Models\Survey::roman($blockIndex + 1) }}</span>
-                        <small>{{ $block['title'] }}</small>
-                    </a>
+                    <div class="cawi-nav-group" data-nav-group="{{ $block['id'] }}">
+                        <a class="cawi-nav-link" href="#blok-{{ $block['id'] }}" data-nav-target="blok-{{ $block['id'] }}" data-nav-block="{{ $block['id'] }}">
+                            <span>BLOK {{ \App\Models\Survey::roman($blockIndex + 1) }} <em class="nav-count" data-nav-count></em></span>
+                            <small>{{ $block['title'] }}</small>
+                        </a>
+                        <ol class="nav-questions" data-nav-questions="{{ $block['id'] }}"></ol>
+                    </div>
                 @endforeach
             </nav>
             @if ($canSubmit || $isPreview)
                 <div class="cawi-nav-progress">
                     <div class="fill-progress" aria-hidden="true"><span data-progress-bar></span></div>
                     <p data-progress-text aria-live="polite"></p>
+                    <div class="nav-legend" aria-hidden="true">
+                        <span><i class="status-dot is-filled"></i>Terisi</span><span><i class="status-dot is-empty"></i>Kosong</span><span><i class="status-dot is-warning"></i>Peringatan</span><span><i class="status-dot is-error"></i>Galat</span>
+                    </div>
+                    <button class="cawi-button is-ghost nav-summary-button" type="button" data-open-summary>Lihat ringkasan isian</button>
                 </div>
             @endif
         </aside>
@@ -129,6 +151,8 @@
 
                 <form class="fill-form" id="fill-form" method="POST" action="{{ $canSubmit ? route('form.store', $survey) : '#' }}" enctype="multipart/form-data" novalidate @if ($isPreview) data-preview @endif>
                     @csrf
+                    {{-- When the respondent opened the form; set by JavaScript, kept with the draft. --}}
+                    <input type="hidden" name="_started_at" value="{{ old('_started_at') }}" data-started-at>
                     @if ($assignment)
                         <input type="hidden" name="a" value="{{ $assignment->token }}">
                         <div class="fill-assignment">Penugasan{{ $assignment->label ? ': '.$assignment->label : '' }} — sebagian jawaban sudah terisi dari data awal.</div>
@@ -183,6 +207,31 @@
             </footer>
         </main>
     </div>
+
+    @if ($canSubmit || $isPreview)
+        {{-- Shown before sending: what is filled, empty, wrong or worth a second look, like FASIH. --}}
+        <dialog class="fill-summary" data-summary aria-labelledby="summary-title">
+            <div class="summary-head">
+                <div>
+                    <h2 id="summary-title">Ringkasan isian</h2>
+                    <p data-summary-lead>Periksa kembali sebelum mengirim.</p>
+                </div>
+                <button class="summary-close" type="button" data-summary-close aria-label="Tutup ringkasan">×</button>
+            </div>
+            <div class="summary-tiles" role="tablist" aria-label="Status isian">
+                <button type="button" class="summary-tile is-error" role="tab" data-summary-filter="error"><strong data-summary-count="error">0</strong><span>Galat</span></button>
+                <button type="button" class="summary-tile is-warning" role="tab" data-summary-filter="warning"><strong data-summary-count="warning">0</strong><span>Peringatan</span></button>
+                <button type="button" class="summary-tile is-empty" role="tab" data-summary-filter="empty"><strong data-summary-count="empty">0</strong><span>Kosong</span></button>
+                <button type="button" class="summary-tile is-filled" role="tab" data-summary-filter="filled"><strong data-summary-count="filled">0</strong><span>Terisi</span></button>
+            </div>
+            <div class="summary-list" data-summary-list role="tabpanel"></div>
+            <div class="summary-foot">
+                <p class="summary-note" data-summary-note></p>
+                <button class="cawi-button is-ghost" type="button" data-summary-close>Kembali mengisi</button>
+                <button class="cawi-button" type="button" data-summary-submit>{{ $isPreview ? 'Selesai (pratinjau)' : 'Kirim jawaban' }}</button>
+            </div>
+        </dialog>
+    @endif
 
     <script>
         window.fillConfig = @json($fillConfig);

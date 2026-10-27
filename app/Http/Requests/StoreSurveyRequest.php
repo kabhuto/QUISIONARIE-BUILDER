@@ -8,6 +8,7 @@ use App\Support\FieldValidation;
 use App\Support\Formula;
 use App\Support\GoogleDrive;
 use App\Support\Lookup;
+use App\Support\Palette;
 use App\Support\SurveyLogic;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
@@ -71,6 +72,7 @@ class StoreSurveyRequest extends FormRequest
                 ? ['required', 'integer', 'between:1,'.$periodValueCount]
                 : ['nullable'],
             'settings.theme' => ['required', Rule::in(array_keys(Survey::THEMES))],
+            'settings.theme_color' => ['nullable', 'required_if:settings.theme,custom', 'regex:'.Palette::HEX_PATTERN],
             'settings.numbering' => ['required', Rule::in(array_keys(Survey::NUMBERING_STYLES))],
             'settings.thank_you_message' => ['nullable', 'string', 'max:500'],
             'settings.webhook_url' => ['nullable', 'url:http,https', 'max:500'],
@@ -600,6 +602,8 @@ class StoreSurveyRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'settings.theme_color.required_if' => 'Pilih warna kustom untuk tampilan responden.',
+            'settings.theme_color.regex' => 'Warna kustom harus dalam format #RRGGBB.',
             'settings.drive_url.regex' => 'Alamat Google Drive harus alamat Web App Apps Script: https://script.google.com/macros/s/…/exec.',
             'blocks.required' => 'Tambahkan minimal satu blok.',
             'blocks.array' => 'Susunan blok tidak valid.',
@@ -633,6 +637,7 @@ class StoreSurveyRequest extends FormRequest
                 'period_type' => $settings['period_type'],
                 'period_value' => $settings['period_type'] === 'none' ? null : (int) $settings['period_value'],
                 'theme' => $settings['theme'],
+                'theme_color' => $settings['theme'] === 'custom' ? Palette::normalize($settings['theme_color']) : null,
                 'numbering' => $settings['numbering'],
                 'thank_you_message' => $settings['thank_you_message'] ?? null,
                 'confidential' => (bool) $settings['confidential'],

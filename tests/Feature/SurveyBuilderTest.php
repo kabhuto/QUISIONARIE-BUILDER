@@ -365,8 +365,20 @@ class SurveyBuilderTest extends TestCase
         $blocks = $this->validBlocks();
         $blocks[0]['questions'][1]['code_length'] = 21;
 
-        $this->post(route('surveys.store'), $this->validPayload(['settings' => ['paper_size' => 'A0', 'theme' => 'pink', 'numbering' => 'roman']], $blocks))
+        $this->post(route('surveys.store'), $this->validPayload(['settings' => ['paper_size' => 'A0', 'theme' => 'rainbow', 'numbering' => 'roman']], $blocks))
             ->assertSessionHasErrors(['settings.paper_size', 'settings.theme', 'settings.numbering', 'blocks.0.questions.1.code_length']);
+    }
+
+    public function test_a_custom_form_colour_needs_a_valid_colour(): void
+    {
+        $this->post(route('surveys.store'), $this->validPayload(['settings' => ['theme' => 'custom', 'theme_color' => '']]))
+            ->assertSessionHasErrors('settings.theme_color');
+        $this->post(route('surveys.store'), $this->validPayload(['settings' => ['theme' => 'custom', 'theme_color' => 'pink']]))
+            ->assertSessionHasErrors('settings.theme_color');
+
+        $this->post(route('surveys.store'), $this->validPayload(['settings' => ['theme' => 'custom', 'theme_color' => '#D6336C']]))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('#d6336c', Survey::query()->firstOrFail()->themeColor());
     }
 
     public function test_question_ids_must_be_unique_and_safe(): void

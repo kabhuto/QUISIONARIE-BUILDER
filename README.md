@@ -56,6 +56,10 @@ php artisan test
 ## Fitur utama
 
 - Tampilan terang dan gelap (tombol **Tema**; pilihan diingat di perangkat), di halaman admin maupun formulir responden
+- Warna bebas: tiap admin memilih warna tampilan admin sendiri (tombol **Warna**: tosca, hijau, biru, ungu, pink, merah, oranye, kuning, abu, atau warna lain); formulir responden punya 9 warna siap pakai plus **Kustom**
+- Dashboard respons dengan grafik sesuai tipe data: pie untuk satu pilihan (mis. "hari ini masuk/tidak"), batang untuk pilihan ganda, tren per hari/bulan/tahun untuk tanggal, histogram untuk angka, rentang ukuran berkas untuk unggahan (1–100 KB, 101–250 KB, …), matriks bertumpuk, dan peta untuk lokasi; ditambah grafik respons per hari, jam pengiriman, dan perangkat responden
+- Setiap respons mencatat waktu kirim, waktu mulai mengisi, lama mengisi, alamat IP, dan perangkat (ikut di detail, CSV, Spreadsheet, JSON, API, dan webhook)
+- Formulir responden ramah ponsel/tablet: bilah blok di atas dengan tombol blok sebelumnya/berikutnya, daftar blok beserta rincian pertanyaan dan statusnya (Terisi, Kosong, Peringatan, Galat), serta **ringkasan isian** sebelum mengirim seperti di FASIH
 - Kelola admin: semua admin berakses penuh dan bisa menambah, mengubah kata sandi, atau menghapus admin lain
 - Builder drag and drop: blok, pertanyaan, kolom tabel, kop (logo, teks, label), dan label lembar
 - Jenis isian: teks, paragraf, pilihan tunggal/ganda, daftar pilihan, angka, Rupiah, tanggal, email, telepon, isian kode, identitas wilayah, tabel/listing, keterangan

@@ -48,6 +48,7 @@
 @else
     <div @class(['fill-question', 'cawi-question', 'is-'.$type, $width, 'is-narrow' => $width !== 'w-full', 'is-branch' => $isBranch, 'is-disabled' => $question['disabled'], 'has-error' => $error])
          data-question-id="{{ $question['id'] }}" data-type="{{ $type }}" @if ($row !== null) data-row="{{ $row }}" @endif
+         data-nav-number="{{ $number }}" data-nav-label="{{ \Illuminate\Support\Str::limit(trim(strip_tags((string) $label)), 120) }}"
          @if ($question['required']) data-required data-static-required @endif
          @if ($question['hidden']) data-static-hidden hidden @endif
          @if ($question['disabled']) data-static-disabled @endif

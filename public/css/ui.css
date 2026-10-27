@@ -215,3 +215,56 @@ body.admin-page,body.login-page{background:var(--bg);background-image:none;color
     .points-map{height:300px}
     .points-list{max-height:260px}
 }
+
+/* Response metadata: send time, filling time, IP and device */
+.data-table td.nowrap{white-space:nowrap}
+.cell-device{white-space:nowrap}
+.cell-device small{display:block;margin-top:2px;font-size:12px;color:var(--text-3)}
+.detail-agent{display:block;margin-top:4px;font-family:var(--mono,monospace);font-size:11.5px;font-weight:400;color:var(--text-3);word-break:break-all;white-space:normal}
+
+/* Accent colour picker (partials/accent-picker) */
+.accent-picker{position:relative}
+.accent-dot{display:block;width:18px;height:18px;border-radius:50%;background:var(--swatch);box-shadow:inset 0 0 0 2px rgb(255 255 255 / .55),0 0 0 1px var(--border-strong)}
+.accent-pop{position:absolute;z-index:40;top:calc(100% + 8px);right:0;width:296px;padding:16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.accent-pop>strong{display:block;font-size:14.5px}
+.accent-pop>p{margin:3px 0 12px;font-size:12.5px;color:var(--text-3)}
+.accent-swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:8px 4px}
+.accent-swatch{display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 0;border:0;border-radius:10px;background:none;color:var(--text-2);cursor:pointer;font:inherit}
+.accent-swatch span{width:28px;height:28px;border-radius:50%;background:var(--swatch);box-shadow:0 0 0 2px var(--surface),0 0 0 3px var(--border);transition:transform .12s,box-shadow .12s}
+.accent-swatch small{font-size:11px;font-weight:600}
+.accent-swatch:hover span{transform:scale(1.08)}
+.accent-swatch[aria-pressed="true"] span{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--swatch)}
+.accent-swatch[aria-pressed="true"] small{color:var(--text)}
+.accent-swatch:focus-visible{outline:none}.accent-swatch:focus-visible span{box-shadow:var(--focus)}
+.accent-custom{display:flex;align-items:center;gap:10px;margin-top:12px;padding:8px 10px;border:1px dashed var(--border-strong);border-radius:10px;cursor:pointer;font-size:13px;font-weight:600}
+.accent-custom input{width:34px;height:28px;padding:0;border:0;border-radius:6px;background:none;cursor:pointer}
+.accent-custom code{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--text-3)}
+.accent-status{margin:8px 0 0;min-height:1em;font-size:12px;color:var(--text-3)}
+@media(max-width:760px){.accent-pop{position:fixed;top:72px;right:12px;left:12px;width:auto}}
+
+/* Respondent form colours (builder) */
+.theme-options{grid-template-columns:repeat(5,minmax(0,1fr));row-gap:10px}
+.theme-option-custom{position:relative}
+.theme-option-custom input[type=color]{position:absolute;inset:0 0 auto;width:26px;height:26px;margin:0 auto;opacity:0;cursor:pointer}
+.theme-option-custom>span{background:conic-gradient(from 90deg,#e8590c,#b08800,#2f9e44,#087e78,#1f63b0,#6a4bb0,#d6336c,#e8590c)}
+.theme-option-custom.has-color>span{background:var(--swatch)}
+
+/* Charts on the responses page (js/response-charts.js) */
+.summary-card{min-width:0}
+.summary-card-wide{grid-column:1/-1}
+.summary-card header h3:first-child{grid-column:1/-1}
+.overview-grid .summary-card header{grid-template-columns:1fr auto;align-items:baseline}
+.overview-grid .summary-card header h3{grid-column:auto}
+.chart{width:100%;min-height:140px;margin:4px 0 2px}
+.chart-table{margin-top:6px;font-size:13px}
+.chart-table summary{display:inline-block;padding:2px 0;color:var(--text-3);font-size:12.5px;font-weight:600;cursor:pointer;list-style:none}
+.chart-table summary::-webkit-details-marker{display:none}
+.chart-table summary::before{content:"▸ ";display:inline-block;transition:transform .15s}
+.chart-table[open] summary::before{transform:rotate(90deg)}
+.chart-table summary:hover{color:var(--brand)}
+.chart-table .data-table{margin-top:6px;font-size:13px}
+.chart-table .data-table th,.chart-table .data-table td{padding:6px 10px}
+.number-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:560px){.number-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:900px){.overview-grid{grid-template-columns:minmax(0,1fr)}}

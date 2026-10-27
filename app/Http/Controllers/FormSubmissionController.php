@@ -11,6 +11,8 @@ use App\Support\Webhook;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 /**
@@ -42,7 +44,14 @@ class FormSubmissionController extends Controller
     {
         abort_unless($survey->isPublished(), 404);
 
-        $response = $survey->responses()->create(['answers' => $request->answers(), 'flags' => $request->flags(), 'source' => 'form']);
+        $response = $survey->responses()->create([
+            'answers' => $request->answers(),
+            'flags' => $request->flags(),
+            'source' => 'form',
+            'started_at' => $this->startedAt($request),
+            'ip_address' => $request->ip(),
+            'user_agent' => Str::limit((string) $request->userAgent(), 500, ''),
+        ]);
         $request->assignment()?->update(['response_id' => $response->id]);
         Webhook::responseCreated($survey, $response);
         GoogleDrive::responseCreated($survey, $response);
@@ -72,6 +81,22 @@ class FormSubmissionController extends Controller
         $options = $parent === '' ? [] : Lookup::optionsFor($found, $parent);
 
         return response()->json(['data' => $options ?? [], 'available' => $options !== null]);
+    }
+
+    /**
+     * When the form was opened, as the page reported it (milliseconds since 1970); ignored when it
+     * is missing or not within the last week.
+     */
+    private function startedAt(Request $request): ?Carbon
+    {
+        $milliseconds = $request->input('_started_at');
+        if (! is_numeric($milliseconds)) {
+            return null;
+        }
+
+        $startedAt = Carbon::createFromTimestampMs((int) $milliseconds);
+
+        return $startedAt->between(now()->subWeek(), now()->addMinute()) ? $startedAt->min(now()) : null;
     }
 
     private function assignmentFor(Request $request, Survey $survey): ?Assignment
