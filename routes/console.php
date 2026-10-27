@@ -33,7 +33,7 @@ Artisan::command('admin:buat {akun} {--name=Admin}', function (string $akun) {
     $this->info(($user->wasRecentlyCreated ? 'Admin dibuat: ' : 'Kata sandi admin diperbarui: ').$akun);
 
     return 0;
-})->purpose('Buat akun admin (atau ganti kata sandinya) untuk masuk ke Ruang Kuesioner');
+})->purpose('Buat akun admin (atau ganti kata sandinya) untuk masuk ke PRISMA');
 
 // Run by deploy.sh: the .env account is made, and its password follows ADMIN_PASSWORD while that is set.
 Artisan::command('admin:sinkron', function () {

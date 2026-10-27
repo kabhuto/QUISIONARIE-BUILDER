@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>@yield('title') | Ruang Kuesioner</title>
+    <title>@yield('title') | PRISMA</title>
     @include('partials.theme', ['accent' => true])
     <link rel="stylesheet" href="{{ asset('css/builder.css') }}">
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
@@ -12,9 +12,8 @@
 </head>
 <body class="admin-page">
     <header class="topbar">
-        <a class="brand" href="{{ route('surveys.index') }}" aria-label="Dashboard Ruang Kuesioner">
-            <span class="brand-mark">b<span>p</span>s</span>
-            <span class="brand-name">RUANG<span>KUESIONER</span></span>
+        <a class="brand" href="{{ route('surveys.index') }}" aria-label="Dashboard PRISMA">
+            @include('partials.brand')
         </a>
         <nav class="main-nav" aria-label="Navigasi utama">
             @foreach ([

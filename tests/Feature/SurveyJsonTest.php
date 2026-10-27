@@ -163,7 +163,7 @@ class SurveyJsonTest extends TestCase
     {
         $this->post(route('validation.store'), ['template' => UploadedFile::fake()->createWithContent('t.json', '[1, 2, 3]')])
             ->assertOk()
-            ->assertSee('bukan hasil ekspor JSON Ruang Kuesioner');
+            ->assertSee('bukan hasil ekspor JSON PRISMA');
 
         $this->get(route('validation.create'))->assertOk()->assertSee('Template (JSON ekspor)');
     }

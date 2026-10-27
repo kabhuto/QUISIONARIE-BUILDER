@@ -1,22 +1,22 @@
 /**
- * Ruang Kuesioner → Google Drive
+ * PRISMA → Google Drive
  *
  * Menyimpan berkas/foto/tanda tangan setiap respons ke folder Drive (subfolder per kuesioner
  * dan per tanggal) dan menambahkan satu baris per respons ke spreadsheet "Rekap - <judul>".
- * Jangan ubah FOLDER_ID dan KUNCI; keduanya dibuat oleh Ruang Kuesioner untuk folder Anda.
+ * Jangan ubah FOLDER_ID dan KUNCI; keduanya dibuat oleh PRISMA untuk folder Anda.
  */
 const FOLDER_ID = '__FOLDER_ID__';
 const KUNCI = '__KEY__';
 
 function doGet() {
-  return ContentService.createTextOutput('Ruang Kuesioner → Google Drive aktif.');
+  return ContentService.createTextOutput('PRISMA → Google Drive aktif.');
 }
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
   try {
     const data = JSON.parse(e.postData.contents);
-    if (data.key !== KUNCI) return balas({ ok: false, error: 'Kunci tidak cocok. Salin ulang skrip dari Ruang Kuesioner.' });
+    if (data.key !== KUNCI) return balas({ ok: false, error: 'Kunci tidak cocok. Salin ulang skrip dari PRISMA.' });
 
     const root = DriveApp.getFolderById(FOLDER_ID);
     if (data.ping) return balas({ ok: true, folder: root.getName(), folder_url: root.getUrl() });

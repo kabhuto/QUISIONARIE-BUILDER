@@ -1,6 +1,6 @@
-# Ruang Kuesioner
+# PRISMA
 
-Aplikasi pembuat kuesioner untuk kegiatan BPS, berbasis Laravel. Kuesioner disusun dengan drag and drop, diisi responden lewat tautan (tampilan bergaya CAWI), lalu hasilnya bisa dicetak, dilihat sebagai listing, diekspor, dan divalidasi.
+**Platform Riset, Survei, dan Manajemen Data** untuk kegiatan BPS, berbasis Laravel. Kuesioner disusun dengan drag and drop, diisi responden lewat tautan (tampilan bergaya CAWI), lalu hasilnya bisa dicetak, dilihat sebagai listing, diekspor, dan divalidasi.
 
 ## Kebutuhan
 

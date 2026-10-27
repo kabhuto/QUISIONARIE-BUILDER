@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
-    <title>Masuk | Ruang Kuesioner</title>
+    <title>Masuk | PRISMA</title>
     @include('partials.theme')
     <link rel="stylesheet" href="{{ asset('css/builder.css') }}">
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
@@ -15,11 +15,10 @@
     <main class="login-shell">
         <section class="login-hero" aria-hidden="true">
             <div class="brand">
-                <span class="brand-mark">b<span>p</span>s</span>
-                <span class="brand-name">RUANG<span>KUESIONER</span></span>
+                @include('partials.brand', ['full' => true])
             </div>
             <div>
-                <h2>Susun kuesioner, bagikan tautan, pantau respons.</h2>
+                <h2>Riset, survei, dan pengelolaan data dalam satu platform.</h2>
                 <ul class="login-points">
                     <li><span>1</span> Buat formulir dengan blok dan logika lompatan</li>
                     <li><span>2</span> Responden mengisi lewat HP tanpa login</li>
@@ -31,8 +30,7 @@
 
         <section class="login-card">
             <div class="brand login-brand-mobile">
-                <span class="brand-mark">b<span>p</span>s</span>
-                <span class="brand-name">RUANG<span>KUESIONER</span></span>
+                @include('partials.brand')
             </div>
             <h1>Masuk admin</h1>
             <p class="muted">Untuk membuat kuesioner dan melihat respons. Responden tidak perlu masuk; mereka cukup membuka tautan formulir.</p>

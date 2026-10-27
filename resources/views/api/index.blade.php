@@ -69,7 +69,7 @@
             <tbody>
                 <tr><td><code>GET /surveys</code></td><td>Daftar kuesioner beserta tautan formulir dan jumlah respons.</td><td>baca</td></tr>
                 <tr><td><code>GET /surveys/{id}</code></td><td>Definisi lengkap (blok, pertanyaan, logika, validasi, rumus) + nomor pertanyaan + ringkasan aturan. Tambah <code>?format=formgear</code> untuk template FormGear/FASIH.</td><td>baca</td></tr>
-                <tr><td><code>POST /surveys</code></td><td>Buat kuesioner dari JSON — file ekspor Ruang Kuesioner, bagian <code>survey</code>-nya, atau template FormGear (<code>{"template": …, "validation": …}</code>). Tambah <code>"publish": true</code> untuk langsung terbit.</td><td>tulis</td></tr>
+                <tr><td><code>POST /surveys</code></td><td>Buat kuesioner dari JSON — file ekspor PRISMA, bagian <code>survey</code>-nya, atau template FormGear (<code>{"template": …, "validation": …}</code>). Tambah <code>"publish": true</code> untuk langsung terbit.</td><td>tulis</td></tr>
                 <tr><td><code>PUT /surveys/{id}</code></td><td>Ganti definisi kuesioner.</td><td>tulis</td></tr>
                 <tr><td><code>POST / DELETE /surveys/{id}/publish</code></td><td>Terbitkan / tarik kuesioner.</td><td>tulis</td></tr>
                 <tr><td><code>POST /surveys/{id}/validate</code></td><td>Periksa jawaban <b>tanpa menyimpan</b>: galat, peringatan yang perlu dikonfirmasi, hasil rumus, baris rincian, dan pertanyaan yang tampil menurut logika.</td><td>baca</td></tr>

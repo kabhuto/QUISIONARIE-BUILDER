@@ -44,7 +44,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $isNew ? 'Kuesioner baru' : $survey->title }} | Ruang Kuesioner</title>
+    <title>{{ $isNew ? 'Kuesioner baru' : $survey->title }} | PRISMA</title>
     @include('partials.theme', ['accent' => true])
     <link rel="stylesheet" href="{{ asset('css/builder.css') }}">
     <link rel="stylesheet" href="{{ asset('css/ui.css') }}">
@@ -52,8 +52,7 @@
 <body class="admin-page builder-page">
     <header class="topbar">
         <a class="brand" href="{{ route('surveys.index') }}" aria-label="Kembali ke dashboard">
-            <span class="brand-mark">b<span>p</span>s</span>
-            <span class="brand-name">RUANG<span>KUESIONER</span></span>
+            @include('partials.brand')
         </a>
         <div class="topbar-context">
             <span class="live-dot {{ $survey->isPublished() ? '' : 'is-draft' }}"></span>

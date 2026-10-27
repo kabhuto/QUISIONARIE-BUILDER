@@ -1,4 +1,4 @@
-# Memasang Ruang Kuesioner di Hostinger
+# Memasang PRISMA di Hostinger
 
 Panduan ini untuk paket Hostinger yang punya **akses SSH** (Premium, Business, atau Cloud). Paket tanpa SSH tidak bisa menjalankan `composer` dan `php artisan`.
 

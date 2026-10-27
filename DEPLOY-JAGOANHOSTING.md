@@ -1,4 +1,4 @@
-# Memasang Ruang Kuesioner di Jagoan Hosting (cPanel)
+# Memasang PRISMA di Jagoan Hosting (cPanel)
 
 Panduan ini untuk paket Jagoan Hosting yang memakai **cPanel**. Pengambilan kode dari GitHub (*pull*) dan pemasangan (*deploy*) dilakukan lewat menu **Git™ Version Control**. Perintah `php artisan` sekali jalan di awal memakai menu **Terminal** cPanel (atau SSH).
 
@@ -15,7 +15,7 @@ Panduan ini untuk paket Jagoan Hosting yang memakai **cPanel**. Pengambilan kode
 - **Clone a Repository**: aktif
 - **Clone URL**: `https://github.com/kabhuto/QUISIONARIE-BUILDER.git`
 - **Repository Path**: `ruang-kuesioner` (folder baru di luar `public_html`, jadi kode dan `.env` tidak bisa dibuka dari browser)
-- **Repository Name**: `Ruang Kuesioner`
+- **Repository Name**: `PRISMA`
 
 Tekan **Create**.
 
@@ -68,7 +68,7 @@ Buka `https://<domain-anda>/masuk` dan masuk dengan akun admin tadi.
 
 ## 6. Memperbarui setelah ada perubahan di GitHub (pull)
 
-*Files → Git™ Version Control* → **Manage** pada *Ruang Kuesioner* → tab **Pull or Deploy**:
+*Files → Git™ Version Control* → **Manage** pada repositori aplikasi (mis. *PRISMA*) → tab **Pull or Deploy**:
 
 1. **Update from Remote**: menarik commit terbaru dari GitHub.
 2. **Deploy HEAD Commit**: menjalankan `.cpanel.yml`, yaitu `bash deploy.sh` (composer, migrasi, cache) secara otomatis.

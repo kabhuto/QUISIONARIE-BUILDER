@@ -39,16 +39,16 @@
             <h3>2. Pasang skrip di akun Google pemilik folder</h3>
             <ol>
                 <li>Masuk ke Google dengan akun yang <b>memiliki atau boleh mengedit</b> folder itu, lalu buka <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com → Proyek baru</a>.</li>
-                <li>Hapus isi editor, lalu tempel skrip di bawah ini (tombol <b>Salin</b>). Beri nama proyek, mis. <i>Ruang Kuesioner Drive</i>, dan simpan (Ctrl+S).</li>
+                <li>Hapus isi editor, lalu tempel skrip di bawah ini (tombol <b>Salin</b>). Beri nama proyek, mis. <i>PRISMA Drive</i>, dan simpan (Ctrl+S).</li>
                 <li>Klik <b>Terapkan → Deployment baru</b>, pilih jenis <b>Aplikasi web</b>. Isi <b>Jalankan sebagai: Saya</b> dan <b>Yang memiliki akses: Siapa saja</b>, lalu <b>Terapkan</b>.</li>
-                <li>Saat diminta, klik <b>Izinkan akses</b>, pilih akun Anda. Bila muncul "Google belum memverifikasi aplikasi ini", klik <b>Lanjutan → Buka Ruang Kuesioner Drive (tidak aman)</b> → <b>Izinkan</b>. Ini wajar untuk skrip buatan sendiri.</li>
+                <li>Saat diminta, klik <b>Izinkan akses</b>, pilih akun Anda. Bila muncul "Google belum memverifikasi aplikasi ini", klik <b>Lanjutan → Buka PRISMA Drive (tidak aman)</b> → <b>Izinkan</b>. Ini wajar untuk skrip buatan sendiri.</li>
                 <li>Salin <b>URL aplikasi web</b> (berakhiran <code>/exec</code>) dan tempel di langkah 3.</li>
             </ol>
             <div class="api-token-form">
                 <textarea class="share-url mono-input" id="drive-script" rows="12" readonly aria-label="Skrip Apps Script">{{ $script }}</textarea>
             </div>
             <button class="button button-primary" type="button" data-copy="#drive-script">Salin skrip</button>
-            <p class="muted">Skrip memuat kunci khusus aplikasi ini, sehingga hanya Ruang Kuesioner yang bisa menulis ke folder lewat skrip tersebut.</p>
+            <p class="muted">Skrip memuat kunci khusus aplikasi ini, sehingga hanya PRISMA yang bisa menulis ke folder lewat skrip tersebut.</p>
         @endif
 
         <h3>3. Alamat Web App</h3>

@@ -21,13 +21,13 @@ class SurveyController extends Controller
     public function about(): JsonResponse
     {
         return response()->json([
-            'name' => 'Ruang Kuesioner API',
+            'name' => 'PRISMA API',
             'version' => 'v1',
             'documentation' => route('api-access.index'),
             'endpoints' => [
                 'GET /api/v1/surveys' => 'Daftar kuesioner',
-                'GET /api/v1/surveys/{id}?format=formgear' => 'Definisi kuesioner (format Ruang Kuesioner atau FormGear)',
-                'POST /api/v1/surveys' => 'Buat kuesioner dari JSON (format Ruang Kuesioner atau template FormGear)',
+                'GET /api/v1/surveys/{id}?format=formgear' => 'Definisi kuesioner (format PRISMA atau FormGear)',
+                'POST /api/v1/surveys' => 'Buat kuesioner dari JSON (format PRISMA atau template FormGear)',
                 'PUT /api/v1/surveys/{id}' => 'Ganti definisi kuesioner',
                 'POST|DELETE /api/v1/surveys/{id}/publish' => 'Terbitkan / tarik kuesioner',
                 'POST /api/v1/surveys/{id}/validate' => 'Periksa jawaban tanpa menyimpan',

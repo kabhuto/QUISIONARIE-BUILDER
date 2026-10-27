@@ -174,7 +174,7 @@ class SurveyJson
     public static function assertExportFile(array $file): void
     {
         if (($file['format'] ?? null) !== self::FORMAT || ! is_array($file['survey'] ?? null)) {
-            throw new InvalidArgumentException('File bukan hasil ekspor JSON Ruang Kuesioner.');
+            throw new InvalidArgumentException('File bukan hasil ekspor JSON PRISMA.');
         }
     }
 

@@ -42,7 +42,7 @@ class SurveyJsonController extends Controller
         $zip->addFromString('template.json', (string) json_encode($files['template'], $flags));
         $zip->addFromString('validation.json', (string) json_encode($files['validation'], $flags));
         $zip->addFromString('preset.json', (string) json_encode($files['preset'], $flags));
-        $zip->addFromString('CATATAN.txt', "Ekspor FormGear dari Ruang Kuesioner: {$survey->title}\n\n"
+        $zip->addFromString('CATATAN.txt', "Ekspor FormGear dari PRISMA: {$survey->title}\n\n"
             .($files['notes'] === [] ? 'Semua isian, logika, dan validasi memiliki padanan di FormGear.' : "Yang perlu diperiksa:\n- ".implode("\n- ", array_unique($files['notes'])))."\n");
         $zip->close();
 

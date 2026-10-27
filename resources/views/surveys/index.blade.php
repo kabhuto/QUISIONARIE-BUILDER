@@ -6,7 +6,7 @@
     <a class="button button-ghost" href="{{ route('validation.create') }}">Validasi data</a>
     <form class="import-form" method="POST" action="{{ route('surveys.import') }}" enctype="multipart/form-data">
         @csrf
-        <label class="button button-ghost" title="File ekspor JSON Ruang Kuesioner, atau template FormGear/FASIH (boleh pilih template.json + validation.json + preset.json sekaligus)">
+        <label class="button button-ghost" title="File ekspor JSON PRISMA, atau template FormGear/FASIH (boleh pilih template.json + validation.json + preset.json sekaligus)">
             Impor JSON / FormGear
             <input class="sr-only" type="file" name="files[]" accept=".json,application/json" multiple onchange="this.form.submit()">
         </label>
@@ -24,8 +24,8 @@
     <div class="page-intro">
         <div>
             <div class="eyebrow"><span>00</span> DASHBOARD</div>
-            <h1>Ruang kuesioner.</h1>
-            <p>Formulir untuk semua kegiatan BPS: buat, pratinjau, publikasikan, lalu pantau respons.</p>
+            <h1>PRISMA.</h1>
+            <p>Platform riset, survei, dan manajemen data untuk semua kegiatan BPS: buat formulir, publikasikan, lalu pantau dan olah responsnya.</p>
         </div>
         <div class="stat-row">
             <div class="stat-tile"><span>Kuesioner</span><strong>{{ $surveys->count() }}</strong></div>

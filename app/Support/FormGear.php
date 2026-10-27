@@ -83,7 +83,7 @@ class FormGear
 
         // Exported from this app: the original questionnaire travels with the template, so nothing is lost.
         if (is_array($template['x-ruang-kuesioner']['survey'] ?? null)) {
-            return [$template['x-ruang-kuesioner']['survey'], ['Template FormGear ini dibuat oleh Ruang Kuesioner; kuesioner aslinya dipulihkan utuh.']];
+            return [$template['x-ruang-kuesioner']['survey'], ['Template FormGear ini dibuat oleh PRISMA; kuesioner aslinya dipulihkan utuh.']];
         }
 
         $converter = new self;
