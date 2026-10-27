@@ -63,6 +63,26 @@ class SpreadsheetExportTest extends TestCase
         $this->assertSame('AA', Xlsx::column(26));
     }
 
+    public function test_the_responses_page_maps_every_location_with_hover_links_to_the_rows(): void
+    {
+        $survey = $this->survey();
+        foreach ([['Alfin', '-7.0453, 112.738', '12'], ['Indah', '-7.0461, 112.7392', '35'], ['Tanpa lokasi', '', '']] as [$name, $location, $accuracy]) {
+            $this->post(route('form.store', $survey), ['answers' => ['q-nama' => $name, 'q-lokasi' => $location, 'q-lokasi__akurasi' => $accuracy]])->assertRedirect();
+        }
+        [$alfin, $indah] = $survey->responses()->oldest('id')->get();
+
+        $page = $this->get(route('surveys.responses.index', $survey))->assertOk()
+            ->assertSee('leaflet.min.js', false)
+            ->assertSee('data-point-id="'.$indah->id.'"', false);
+
+        preg_match('/data-map-points="([^"]*)"/', $page->getContent(), $match);
+        $points = json_decode(html_entity_decode($match[1]), true);
+        $this->assertCount(2, $points);
+        // Newest first, numbered like the table's "No"; the name is the first short answer.
+        $this->assertSame(['id' => $indah->id, 'number' => 2, 'lat' => -7.0461, 'lng' => 112.7392, 'accuracy' => 35, 'label' => 'Indah'], array_intersect_key($points[0], array_flip(['id', 'number', 'lat', 'lng', 'accuracy', 'label'])));
+        $this->assertSame(route('surveys.responses.show', [$survey, $alfin]), $points[1]['url']);
+    }
+
     public function test_uploads_are_served_even_without_the_public_storage_link(): void
     {
         Storage::fake('public');

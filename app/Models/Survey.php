@@ -78,6 +78,11 @@ class Survey extends Model
     public const ACCURACY_SUFFIX = '__akurasi';
 
     /**
+     * A location answer: "latitude, longitude".
+     */
+    public const LOCATION_PATTERN = '/^(-?\d{1,2}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/';
+
+    /**
      * A block can repeat once per answer of an earlier question (FormGear's nested input / roster):
      * per number given, per option chosen, or per name in a list.
      */

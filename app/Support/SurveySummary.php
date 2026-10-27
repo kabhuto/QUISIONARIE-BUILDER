@@ -17,7 +17,7 @@ class SurveySummary
      */
     public static function build(Survey $survey, Collection $responses): array
     {
-        return array_map(function (array $question) use ($responses): array {
+        return array_map(function (array $question) use ($survey, $responses): array {
             $answered = $responses->filter(fn (SurveyResponse $response): bool => $response->displayAnswer($question) !== '');
             // In a repeating block every row's answer counts.
             $answers = $answered->flatMap(fn (SurveyResponse $response): array => ! empty($question['in_roster'])
@@ -67,9 +67,47 @@ class SurveySummary
                 ]);
             }
 
+            if ($question['type'] === 'location' && empty($question['in_roster'])) {
+                return array_merge($summary, ['kind' => 'points', 'points' => self::points($survey, $question, $responses)]);
+            }
+
             return $summary + [
                 'samples' => $answered->take(3)->map(fn (SurveyResponse $response): string => $response->displayAnswer($question))->values()->all(),
             ];
         }, $survey->questions());
+    }
+
+    /**
+     * Every response's point for a location question, for the map on the responses page. Each point
+     * carries the response's number in the table (newest first, so the newest has the highest) and
+     * the first short answer (usually the respondent's name) to tell the points apart.
+     *
+     * @param  array<string, mixed>  $question
+     * @param  Collection<int, SurveyResponse>  $responses
+     * @return list<array{id: int, number: int, lat: float, lng: float, accuracy: ?int, label: string, time: string, url: string}>
+     */
+    private static function points(Survey $survey, array $question, Collection $responses): array
+    {
+        $nameQuestion = collect($survey->questions())->first(fn (array $candidate): bool => $candidate['type'] === 'short' && empty($candidate['in_roster']));
+        $points = [];
+        foreach ($responses->values() as $index => $response) {
+            if (! preg_match(Survey::LOCATION_PATTERN, trim((string) $response->answerTo($question['id'])), $match)) {
+                continue;
+            }
+            $accuracy = $response->answers[$question['id'].Survey::ACCURACY_SUFFIX] ?? null;
+            $number = $responses->count() - $index;
+            $points[] = [
+                'id' => $response->id,
+                'number' => $number,
+                'lat' => (float) $match[1],
+                'lng' => (float) $match[2],
+                'accuracy' => is_numeric($accuracy) ? (int) round((float) $accuracy) : null,
+                'label' => ($nameQuestion ? $response->displayAnswer($nameQuestion) : '') ?: 'Respons #'.$number,
+                'time' => $response->created_at->translatedFormat('d M Y, H:i'),
+                'url' => route('surveys.responses.show', [$survey, $response]),
+            ];
+        }
+
+        return $points;
     }
 }

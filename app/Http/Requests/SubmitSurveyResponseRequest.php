@@ -354,7 +354,7 @@ class SubmitSurveyResponseRequest extends FormRequest
         $question = $field['question'];
 
         return function (string $attribute, mixed $value, Closure $fail) use ($question, $field): void {
-            if (! is_string($value) || ! preg_match('/^(-?\d{1,2}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/', trim($value), $match)
+            if (! is_string($value) || ! preg_match(Survey::LOCATION_PATTERN, trim($value), $match)
                 || abs((float) $match[1]) > 90 || abs((float) $match[2]) > 180) {
                 $fail("{$question['text']} harus berupa koordinat \"lintang, bujur\", mis. -7.0321, 112.7464.");
 

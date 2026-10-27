@@ -49,7 +49,7 @@
             <div class="section-title"><span class="eyebrow">01</span><h2>Ringkasan jawaban</h2></div>
             <div class="summary-grid">
                 @foreach ($summary as $item)
-                    <article class="summary-card">
+                    <article @class(['summary-card', 'summary-card-map' => $item['kind'] === 'points'])>
                         <header>
                             <span class="mono-chip">{{ $item['question']['number'] }}</span>
                             <h3>{{ $item['question']['label'] }}</h3>
@@ -72,6 +72,31 @@
                                 <div><dt>Terkecil</dt><dd>{{ $item['min'] }}</dd></div>
                                 <div><dt>Terbesar</dt><dd>{{ $item['max'] }}</dd></div>
                             </dl>
+                        @elseif ($item['kind'] === 'points')
+                            @if ($item['points'] === [])
+                                <p class="muted">Belum ada titik lokasi.</p>
+                            @else
+                                @pushOnce('head')
+                                    @include('partials.leaflet')
+                                @endPushOnce
+                                <div class="points-layout">
+                                    <div class="points-map" role="img" aria-label="Peta lokasi {{ $item['question']['label'] }}" data-map-points="{{ json_encode($item['points']) }}"></div>
+                                    <ol class="points-list" aria-label="Daftar titik">
+                                        @foreach ($item['points'] as $point)
+                                            <li>
+                                                <a href="{{ $point['url'] }}" class="points-item" data-point-id="{{ $point['id'] }}">
+                                                    <span class="map-pin-number">{{ $point['number'] }}</span>
+                                                    <span class="points-copy">
+                                                        <strong>{{ $point['label'] }}</strong>
+                                                        <small>{{ $point['time'] }}@if ($point['accuracy'] !== null) · ±{{ $point['accuracy'] }} m @endif</small>
+                                                    </span>
+                                                </a>
+                                            </li>
+                                        @endforeach
+                                    </ol>
+                                </div>
+                                <p class="points-hint muted">Arahkan kursor ke titik, nama, atau baris tabel untuk menyorot lokasinya; klik untuk membuka detail respons. Lingkaran = jangkauan akurasi GPS.</p>
+                            @endif
                         @elseif ($item['samples'] !== [])
                             <ul class="sample-list">
                                 @foreach ($item['samples'] as $sample)
@@ -102,11 +127,14 @@
                     </thead>
                     <tbody>
                         @foreach ($responses as $response)
-                            <tr>
+                            <tr data-point-id="{{ $response->id }}" data-href="{{ route('surveys.responses.show', [$survey, $response]) }}">
                                 <td class="mono">{{ $responses->count() - $loop->index }}@if ($response->flags['confirmed_warnings'] ?? null)<span class="flag-dot" title="Ada peringatan konsistensi yang dikonfirmasi responden">⚠</span>@endif</td>
                                 <td>{{ $response->created_at->translatedFormat('d M Y, H:i') }}</td>
                                 @foreach ($previewQuestions as $question)
-                                    <td>{{ \Illuminate\Support\Str::limit($response->displayAnswer($question), 40) ?: '—' }}</td>
+                                    @php($fullAnswer = $response->displayAnswer($question))
+                                    <td @if (mb_strlen($fullAnswer) > 40) title="{{ $fullAnswer }}" @endif>
+                                        @if ($question['type'] === 'location' && $fullAnswer !== '')<span class="cell-pin" aria-hidden="true">📍</span>@endif{{ \Illuminate\Support\Str::limit($fullAnswer, 40) ?: '—' }}
+                                    </td>
                                 @endforeach
                                 <td class="align-end"><a class="table-link" href="{{ route('surveys.responses.show', [$survey, $response]) }}">Detail →</a></td>
                             </tr>
@@ -115,5 +143,12 @@
                 </table>
             </div>
         </section>
+        <script>
+            // A row opens its response; links and buttons inside it keep their own action.
+            document.querySelectorAll('tr[data-href]').forEach(row => row.addEventListener('click', event => {
+                if (event.target.closest('a, button, input') || window.getSelection().toString()) return;
+                window.location.href = row.dataset.href;
+            }));
+        </script>
     @endif
 @endsection
