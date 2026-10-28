@@ -79,7 +79,7 @@
                     <article @class(['summary-card', 'summary-card-map' => $item['kind'] === 'points', 'summary-card-wide' => in_array($item['chart']['type'] ?? null, ['line', 'stacked'], true)])>
                         <header>
                             <span class="mono-chip">{{ $item['question']['number'] }}</span>
-                            <h3>{{ $item['question']['label'] }}</h3>
+                            <h3>{{ $item['question']['text'] }}</h3>
                             <span class="muted">{{ $item['answered'] }} dari {{ $responses->count() }} menjawab</span>
                         </header>
 
@@ -108,6 +108,16 @@
                             @unless ($item['chart'])
                                 <p class="muted">Belum ada jawaban.</p>
                             @endunless
+                        @elseif ($item['kind'] === 'signatures')
+                            @if ($item['signatures'] === [])
+                                <p class="muted">Belum ada tanda tangan.</p>
+                            @else
+                                <ul class="signature-grid">
+                                    @foreach ($item['signatures'] as $signature)
+                                        <li><img src="{{ $signature }}" alt="Tanda tangan responden" loading="lazy"></li>
+                                    @endforeach
+                                </ul>
+                            @endif
                         @elseif ($item['kind'] === 'points')
                             @if ($item['points'] === [])
                                 <p class="muted">Belum ada titik lokasi.</p>
@@ -161,6 +171,20 @@
                             @endforeach
                             <th scope="col"><span class="sr-only">Aksi</span></th>
                         </tr>
+                        {{-- One filter per column, like a spreadsheet: rows stay when their cell holds the typed text. --}}
+                        <tr class="filter-row">
+                            <td></td>
+                            <td><input type="search" data-column-filter="1" placeholder="Saring waktu" aria-label="Saring waktu kirim"></td>
+                            <td><input type="search" data-column-filter="2" placeholder="Saring IP/perangkat" aria-label="Saring IP atau perangkat"></td>
+                            @foreach ($previewQuestions as $question)
+                                <td>
+                                    @unless ($question['type'] === 'signature')
+                                        <input type="search" data-column-filter="{{ $loop->index + 3 }}" placeholder="Saring" aria-label="Saring {{ $question['text'] }}">
+                                    @endunless
+                                </td>
+                            @endforeach
+                            <td class="filter-count" data-filter-count></td>
+                        </tr>
                     </thead>
                     <tbody>
                         @foreach ($responses as $response)
@@ -172,6 +196,16 @@
                                     @if ($response->deviceLabel() !== '')<small>{{ $response->deviceLabel() }}</small>@endif
                                 </td>
                                 @foreach ($previewQuestions as $question)
+                                    @if ($question['type'] === 'signature')
+                                        <td class="cell-signature">
+                                            @if (\App\Models\Survey::isSignatureImage($signature = $response->answerTo($question['id'])))
+                                                <img src="{{ $signature }}" alt="Tanda tangan responden {{ $responses->count() - $loop->parent->index }}" loading="lazy">
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                        @continue
+                                    @endif
                                     @php($fullAnswer = $response->displayAnswer($question))
                                     <td @if (mb_strlen($fullAnswer) > 40) title="{{ $fullAnswer }}" @endif>
                                         @if ($question['type'] === 'location' && $fullAnswer !== '')<span class="cell-pin" aria-hidden="true">📍</span>@endif{{ \Illuminate\Support\Str::limit($fullAnswer, 40) ?: '—' }}
@@ -185,6 +219,21 @@
             </div>
         </section>
         <script>
+            // Column filters: every typed text must appear in its column's cell.
+            const filters = [...document.querySelectorAll('[data-column-filter]')];
+            const rows = [...document.querySelectorAll('tbody tr[data-href]')];
+            const filterCount = document.querySelector('[data-filter-count]');
+            filters.forEach(input => input.addEventListener('input', () => {
+                const active = filters.filter(filter => filter.value.trim() !== '').map(filter => [Number(filter.dataset.columnFilter), filter.value.trim().toLowerCase()]);
+                let shown = 0;
+                rows.forEach(row => {
+                    const match = active.every(([column, text]) => (row.cells[column]?.textContent ?? '').toLowerCase().includes(text));
+                    row.hidden = !match;
+                    shown += match ? 1 : 0;
+                });
+                filterCount.textContent = active.length ? `${shown}/${rows.length}` : '';
+            }));
+
             // A row opens its response; links and buttons inside it keep their own action.
             document.querySelectorAll('tr[data-href]').forEach(row => row.addEventListener('click', event => {
                 if (event.target.closest('a, button, input') || window.getSelection().toString()) return;

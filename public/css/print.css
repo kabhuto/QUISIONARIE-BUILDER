@@ -127,3 +127,4 @@ body.print-page{background:#fff}
 .sheet-roster th{vertical-align:top}
 .sheet-roster tbody td,.sheet-roster tbody th{height:20px;text-align:left}
 .sheet-roster tbody td:first-child{text-align:center;width:24px}
+.listing-signature{display:block;width:100%;max-width:140px;height:auto;max-height:46px;margin:0 auto;object-fit:contain}

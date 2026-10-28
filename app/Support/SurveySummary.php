@@ -125,6 +125,15 @@ class SurveySummary
                 return array_merge($summary, self::files($answers));
             }
 
+            if ($type === 'signature') {
+                // The latest signatures themselves, newest first.
+                return array_merge($summary, [
+                    'kind' => 'signatures',
+                    'signatures' => $answered->map(fn (SurveyResponse $response): mixed => $response->answerTo($question['id']))
+                        ->filter(fn (mixed $answer): bool => Survey::isSignatureImage($answer))->take(6)->values()->all(),
+                ]);
+            }
+
             if ($type === 'matrix' && $answers->isNotEmpty()) {
                 return array_merge($summary, ['kind' => 'chart', 'chart' => self::matrixChart($question, $answers)]);
             }

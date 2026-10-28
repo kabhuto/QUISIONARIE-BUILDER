@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Survey;
 use App\Models\SurveyResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\View;
 
 /**
@@ -57,7 +58,7 @@ class SurveyPrintController extends Controller
      * One row per response; region questions spread over one column per field.
      *
      * @param  iterable<SurveyResponse>  $responses
-     * @return array{0: list<string>, 1: list<list<string>>}
+     * @return array{0: list<string>, 1: list<list<string|HtmlString>>}
      */
     private function responseListing(Survey $survey, iterable $responses): array
     {
@@ -76,12 +77,21 @@ class SurveyPrintController extends Controller
                 continue;
             }
 
+            // A drawn signature shows as the picture itself.
+            if ($question['type'] === 'signature') {
+                $cells[] = [$question['text'], fn (SurveyResponse $response): string|HtmlString => Survey::isSignatureImage($answer = $response->answerTo($question['id']))
+                    ? new HtmlString('<img class="listing-signature" src="'.e($answer).'" alt="Tanda tangan">')
+                    : ''];
+
+                continue;
+            }
+
             $cells[] = [$question['text'], fn (SurveyResponse $response): string => $response->displayAnswer($question)];
         }
 
         $rows = [];
         foreach ($responses as $response) {
-            $rows[] = array_map(fn (array $cell): string => $cell[1]($response), $cells);
+            $rows[] = array_map(fn (array $cell): string|HtmlString => $cell[1]($response), $cells);
         }
 
         return [array_column($cells, 0), $rows];

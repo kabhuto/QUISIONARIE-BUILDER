@@ -93,6 +93,25 @@ class SpreadsheetExportTest extends TestCase
         $this->assertStringContainsString('Extension="png"', $types);
     }
 
+    public function test_signatures_show_as_pictures_in_the_responses_table_and_listing(): void
+    {
+        $survey = $this->survey();
+        $blocks = $survey->blocks;
+        $blocks[0]['questions'][] = ['id' => 'q-ttd', 'type' => 'signature', 'label' => 'Tanda tangan', 'required' => false, 'code_length' => 0, 'options' => []];
+        $survey->update(['blocks' => $blocks]);
+        $signature = 'data:image/png;base64,'.base64_encode(base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAMAAAABCAYAAAAb4BS0AAAAEUlEQVR42mNkYPhfz8DAwAAADgYCAWDA3ZQAAAAASUVORK5CYII='));
+        $survey->responses()->create(['answers' => ['q-nama' => 'Alfin', 'q-ttd' => $signature]]);
+
+        $this->get(route('surveys.responses.index', $survey))
+            ->assertOk()
+            ->assertSee('<img src="'.$signature.'"', false)
+            ->assertSee('data-column-filter', false)
+            ->assertDontSee('[tanda tangan]');
+        $this->get(route('surveys.responses.listing', $survey))
+            ->assertOk()
+            ->assertSee('<img class="listing-signature" src="'.$signature.'"', false);
+    }
+
     public function test_the_responses_page_maps_every_location_with_hover_links_to_the_rows(): void
     {
         $survey = $this->survey();

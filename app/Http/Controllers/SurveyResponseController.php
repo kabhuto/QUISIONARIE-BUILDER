@@ -26,7 +26,7 @@ class SurveyResponseController extends Controller
             'responses' => $responses,
             'summary' => SurveySummary::build($survey, $responses),
             'overview' => SurveySummary::overview($responses),
-            'previewQuestions' => array_slice(array_values(array_filter($survey->questions(), fn (array $question): bool => $question['type'] !== 'table')), 0, 3),
+            'previewQuestions' => self::previewQuestions($survey),
         ]);
     }
 
@@ -123,5 +123,19 @@ class SurveyResponseController extends Controller
             $response->deviceLabel(),
             $response->user_agent ?? '',
         ];
+    }
+
+    /**
+     * The table's answer columns: the first three questions, plus any signature (shown as its picture).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function previewQuestions(Survey $survey): array
+    {
+        $questions = array_values(array_filter($survey->questions(), fn (array $question): bool => $question['type'] !== 'table' && empty($question['in_roster'])));
+        $first = array_slice($questions, 0, 3);
+        $signatures = array_filter($questions, fn (array $question): bool => $question['type'] === 'signature' && ! in_array($question, $first, true));
+
+        return [...$first, ...array_slice(array_values($signatures), 0, 2)];
     }
 }
