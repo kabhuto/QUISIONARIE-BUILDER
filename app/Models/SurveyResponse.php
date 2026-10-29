@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['answers', 'flags', 'source', 'drive', 'started_at', 'ip_address', 'user_agent'])]
+#[Fillable(['answers', 'flags', 'source', 'drive', 'started_at', 'ip_address', 'user_agent', 'survey_version', 'submission_id'])]
 class SurveyResponse extends Model
 {
     /**
@@ -23,6 +23,7 @@ class SurveyResponse extends Model
             'flags' => 'array',
             'drive' => 'array',
             'started_at' => 'datetime',
+            'survey_version' => 'integer',
         ];
     }
 
@@ -122,21 +123,31 @@ class SurveyResponse extends Model
     public function displayAnswer(array $question): string
     {
         $answer = $this->answerTo($question['id']);
-
-        if ($answer === null || $answer === '' || $answer === []) {
-            return '';
-        }
+        $status = $this->answers[$question['id'].Survey::STATUS_SUFFIX] ?? null;
 
         // A question in a repeating block holds one answer per row: "1) … | 2) …".
-        if (! empty($question['in_roster']) && is_array($answer)) {
+        if (! empty($question['in_roster']) && (is_array($answer) || is_array($status))) {
             $others = (array) ($this->answers[$question['id'].Survey::OTHER_SUFFIX] ?? []);
             $labels = (array) ($this->answers[$question['id'].Survey::LABEL_SUFFIX] ?? []);
+            $statuses = (array) $status;
+            $rows = (array) $answer + array_fill_keys(array_keys($statuses), '');
+            ksort($rows);
 
-            return collect($answer)
-                ->map(fn ($value, int $row): string => self::displayValue($question, $value, (string) ($others[$row] ?? ''), (string) ($labels[$row] ?? '')))
+            return collect($rows)
+                ->map(fn ($value, int $row): string => isset(Survey::NONRESPONSE[$statuses[$row] ?? ''])
+                    ? '['.Survey::NONRESPONSE[$statuses[$row]].']'
+                    : self::displayValue($question, $value, (string) ($others[$row] ?? ''), (string) ($labels[$row] ?? '')))
                 ->filter(fn (string $text): bool => $text !== '')
                 ->map(fn (string $text, int $row): string => ($row + 1).') '.$text)
                 ->implode(' | ');
+        }
+
+        if (is_string($status) && isset(Survey::NONRESPONSE[$status])) {
+            return '['.Survey::NONRESPONSE[$status].']';
+        }
+
+        if ($answer === null || $answer === '' || $answer === []) {
+            return '';
         }
 
         return self::displayValue(

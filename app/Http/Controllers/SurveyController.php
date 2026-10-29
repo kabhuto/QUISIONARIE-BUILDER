@@ -8,8 +8,10 @@ use App\Models\Survey;
 use App\Support\FieldValidation;
 use App\Support\Formula;
 use App\Support\Lookup;
+use App\Support\SurveyCheck;
 use App\Support\SurveyLogic;
 use App\Support\SurveyTemplates;
+use App\Support\SurveyVersions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -54,8 +56,17 @@ class SurveyController extends Controller
     public function update(StoreSurveyRequest $request, Survey $survey): RedirectResponse
     {
         $survey->update($request->surveyData());
+        $message = 'Perubahan kuesioner tersimpan.';
+        // Petugas may be filling it in right now: answers from here on belong to a new version.
+        if ($survey->isPublished()) {
+            $before = $survey->versions()->max('number');
+            $version = SurveyVersions::record($survey);
+            if ($version->number !== $before) {
+                $message .= " Formulir sedang dipublikasikan, jadi tercatat sebagai versi {$version->number}.";
+            }
+        }
 
-        return $this->afterSaving($request, $survey, 'Perubahan kuesioner tersimpan.');
+        return $this->afterSaving($request, $survey, $message);
     }
 
     public function destroy(Survey $survey): RedirectResponse
@@ -69,6 +80,7 @@ class SurveyController extends Controller
     {
         return match ($request->input('intent')) {
             'preview' => redirect()->route('surveys.preview', $survey),
+            'preview-phone' => redirect()->route('surveys.preview-phone', $survey),
             'print' => redirect()->route('surveys.print', $survey),
             default => redirect()->route('surveys.edit', $survey)->with('status', $message),
         };
@@ -78,6 +90,8 @@ class SurveyController extends Controller
     {
         return view('surveys.builder', [
             'survey' => $survey,
+            'checks' => $survey->exists ? SurveyCheck::problems($survey) : [],
+            'versionCount' => $survey->exists ? $survey->versions()->count() : 0,
             'settings' => $survey->formSettings(),
             'intro' => $survey->formIntro(),
             'activities' => Survey::query()->distinct()->orderBy('activity')->pluck('activity'),
@@ -112,6 +126,9 @@ class SurveyController extends Controller
                 'fieldWidths' => Survey::FIELD_WIDTHS,
                 'prefillTypes' => Survey::PREFILL_TYPES,
                 'placeholderTypes' => Survey::PLACEHOLDER_TYPES,
+                'unitTypes' => Survey::UNIT_TYPES,
+                'nonresponseTypes' => Survey::NONRESPONSE_TYPES,
+                'nonresponse' => Survey::NONRESPONSE,
                 'validationRules' => FieldValidation::RULES,
                 'checkLevels' => FieldValidation::CHECK_LEVELS,
                 'maxChecks' => FieldValidation::MAX_CHECKS,
@@ -139,6 +156,24 @@ class SurveyController extends Controller
                 'logoStoreUrl' => route('logos.store'),
                 'storageUrl' => asset('storage'),
             ],
+        ]);
+    }
+
+    /**
+     * The versions of an instrument with what changed in each, and how many answers each holds.
+     */
+    public function versions(Survey $survey): View
+    {
+        // Published before versions were kept: what is live now is its first version.
+        if ($survey->isPublished()) {
+            SurveyVersions::record($survey);
+        }
+        $counts = $survey->responses()->selectRaw('survey_version, count(*) as total')->groupBy('survey_version')->pluck('total', 'survey_version');
+
+        return view('surveys.versions', [
+            'survey' => $survey,
+            'versions' => $survey->versions()->orderByDesc('number')->get(),
+            'counts' => $counts,
         ]);
     }
 }

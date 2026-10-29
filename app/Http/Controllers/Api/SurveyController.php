@@ -7,6 +7,7 @@ use App\Models\Survey;
 use App\Support\FormGear;
 use App\Support\Lookup;
 use App\Support\SurveyJson;
+use App\Support\SurveyVersions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -66,6 +67,9 @@ class SurveyController extends Controller
     {
         [$definition, $notes] = $this->definitionFrom($request->all());
         $survey = Survey::query()->create([...$definition, 'published_at' => $request->boolean('publish') ? now() : null]);
+        if ($survey->isPublished()) {
+            SurveyVersions::record($survey);
+        }
 
         return response()->json(['data' => self::summary($survey->loadCount('responses')), 'notes' => $notes], 201);
     }
@@ -74,6 +78,9 @@ class SurveyController extends Controller
     {
         [$definition, $notes] = $this->definitionFrom($request->all());
         $survey->update($definition);
+        if ($survey->isPublished()) {
+            SurveyVersions::record($survey);
+        }
 
         return response()->json(['data' => self::summary($survey->loadCount('responses')), 'notes' => $notes]);
     }
@@ -81,6 +88,7 @@ class SurveyController extends Controller
     public function publish(Survey $survey): JsonResponse
     {
         $survey->update(['published_at' => $survey->published_at ?? now()]);
+        SurveyVersions::record($survey);
 
         return response()->json(['data' => self::summary($survey->loadCount('responses'))]);
     }

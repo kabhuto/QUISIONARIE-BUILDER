@@ -70,6 +70,10 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
                 Pratinjau
             </button>
+            <button class="button button-ghost" type="submit" form="builder-form" name="intent" value="preview-phone" title="Simpan lalu coba di layar HP seperti petugas">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm4 17h2"/></svg>
+                Mode HP
+            </button>
             @unless ($isNew)
                 @if ($survey->isPublished())
                     <button class="button button-ghost" type="submit" form="unpublish-form">Tutup formulir</button>
@@ -86,6 +90,9 @@
 
     @if (session('status'))
         <div class="toast" role="status">{{ session('status') }}</div>
+    @endif
+    @if (session('error'))
+        <div class="toast toast-error" role="alert">{{ session('error') }}</div>
     @endif
     @if (session('importNotes'))
         <details class="import-notes" open>
@@ -115,6 +122,40 @@
             </div>
             <div class="intro-meta"><span class="meta-label">FORMAT</span><span class="meta-value" id="format-summary">Kertas A4 · Potret</span></div>
         </div>
+
+        @unless ($isNew)
+            @php
+                $publishErrors = session('publishErrors');
+                $checkErrors = array_filter($checks, fn ($problem) => $problem['level'] === 'error');
+                $checkWarnings = array_filter($checks, fn ($problem) => $problem['level'] === 'warning');
+            @endphp
+            <details @class(['publish-check', 'has-errors' => $checkErrors, 'is-clean' => ! $checks]) @if ($publishErrors) open @endif>
+                <summary>
+                    <span class="publish-check-title">Pemeriksaan publikasi</span>
+                    @if (! $checks)
+                        <span class="check-pill is-ok">Siap dipublikasikan</span>
+                    @else
+                        @if ($checkErrors)<span class="check-pill is-error">{{ count($checkErrors) }} galat</span>@endif
+                        @if ($checkWarnings)<span class="check-pill is-warning">{{ count($checkWarnings) }} peringatan</span>@endif
+                    @endif
+                    <span class="publish-check-meta">
+                        <a href="{{ route('surveys.versions.index', $survey) }}">Riwayat versi ({{ $versionCount }})</a>
+                    </span>
+                </summary>
+                @if ($checks)
+                    <p class="setting-note">Galat harus diperbaiki sebelum kuesioner dapat dipublikasikan. Peringatan boleh dibiarkan bila memang disengaja. Hasil ini dari versi yang terakhir disimpan.</p>
+                    <ul class="publish-check-list">
+                        @foreach ([...$checkErrors, ...$checkWarnings] as $problem)
+                            <li class="is-{{ $problem['level'] }}">
+                                <b>{{ $problem['level'] === 'error' ? 'Galat' : 'Peringatan' }}</b>
+                                @if ($problem['question'])<span class="mono">{{ \Illuminate\Support\Str::limit(strip_tags($problem['question']), 70) }}</span>@endif
+                                <span>{{ $problem['message'] }}</span>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+            </details>
+        @endunless
 
         @if ($survey->isPublished())
             <div class="share-bar">

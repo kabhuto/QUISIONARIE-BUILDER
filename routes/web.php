@@ -35,6 +35,8 @@ Route::middleware('admin')->group(function (): void {
     Route::post('/validasi', [DataValidationController::class, 'store'])->name('validation.store');
     Route::resource('surveys', SurveyController::class)->except('show');
     Route::get('/surveys/{survey}/preview', [FormSubmissionController::class, 'preview'])->name('surveys.preview');
+    Route::get('/surveys/{survey}/preview/hp', [FormSubmissionController::class, 'phonePreview'])->name('surveys.preview-phone');
+    Route::get('/surveys/{survey}/versi', [SurveyController::class, 'versions'])->name('surveys.versions.index');
     Route::post('/published-surveys/{survey}', [PublishedSurveyController::class, 'store'])->name('published-surveys.store');
     Route::delete('/published-surveys/{survey}', [PublishedSurveyController::class, 'destroy'])->name('published-surveys.destroy');
     Route::get('/surveys/{survey}/print', [SurveyPrintController::class, 'form'])->name('surveys.print');

@@ -60,6 +60,29 @@ class Survey extends Model
     public const DEFAULT_OTHER_LABEL = 'Lainnya (sebutkan)';
 
     /**
+     * Special answers a question may allow when the respondent cannot or will not answer; the
+     * chosen one is stored under the question id plus STATUS_SUFFIX and the answer stays empty.
+     */
+    public const NONRESPONSE = ['tidak_tahu' => 'Tidak tahu', 'menolak' => 'Menolak menjawab'];
+
+    public const STATUS_SUFFIX = '__status';
+
+    /**
+     * Question types that can offer the special answers.
+     */
+    public const NONRESPONSE_TYPES = ['short', 'long', 'number', 'currency', 'date', 'time', 'email', 'phone', 'code', 'single', 'multiple', 'dropdown', 'rating', 'scale', 'slider'];
+
+    /**
+     * A variable code: a letter, then letters, digits or underscores (e.g. R101, B4_K2).
+     */
+    public const VARIABLE_PATTERN = '/^[A-Za-z][A-Za-z0-9_]{0,31}$/';
+
+    /**
+     * Question types that take a unit of measurement (satuan).
+     */
+    public const UNIT_TYPES = ['number', 'currency', 'calc', 'slider'];
+
+    /**
      * What an upload question accepts: label, file extensions.
      */
     public const FILE_KINDS = [
@@ -355,6 +378,14 @@ class Survey extends Model
     public function responses(): HasMany
     {
         return $this->hasMany(SurveyResponse::class);
+    }
+
+    /**
+     * @return HasMany<SurveyVersion, $this>
+     */
+    public function versions(): HasMany
+    {
+        return $this->hasMany(SurveyVersion::class);
     }
 
     /**

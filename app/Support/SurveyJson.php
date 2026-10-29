@@ -71,6 +71,7 @@ class SurveyJson
             'submitted_at' => $response->created_at?->toIso8601String(),
             ...self::metadata($response),
             'source' => $response->source ?? 'form',
+            'survey_version' => $response->survey_version,
             'assignment_id' => $response->assignment?->id,
             'answers' => $response->answers ?? (object) [],
             'flags' => $response->flags,
@@ -111,6 +112,8 @@ class SurveyJson
                 $question['max_length'] ? "maksimal {$question['max_length']} karakter" : null,
                 ($question['mask'] ?? '') !== '' ? "format {$question['mask']}" : null,
                 ! empty($question['in_roster']) ? 'diisi per rincian (daftar jawaban per baris)' : null,
+                ($question['unit'] ?? '') !== '' ? 'satuan: '.$question['unit'] : null,
+                ! empty($question['nonresponse']) ? 'boleh dijawab '.implode(' / ', Survey::NONRESPONSE).' (dikirim sebagai '.$question['id'].Survey::STATUS_SUFFIX.' = '.implode(' | ', array_keys(Survey::NONRESPONSE)).', jawaban dikosongkan)' : null,
             ]));
 
             $rules[] = match ($question['type']) {
@@ -159,7 +162,10 @@ class SurveyJson
             return [
                 'number' => $numbers[$question['id']],
                 'id' => $question['id'],
+                'variable' => ($question['variable'] ?? '') ?: null,
                 'label' => $question['label'],
+                'unit' => ($question['unit'] ?? '') ?: null,
+                'concept' => ($question['concept'] ?? '') ?: null,
                 'type' => $question['type'],
                 'rules' => [...$rules, ...FieldValidation::describe($question, $numbers)],
                 'logic' => SurveyLogic::describe($question['logic'], $numbers),

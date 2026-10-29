@@ -7,6 +7,7 @@ use App\Models\Assignment;
 use App\Models\Survey;
 use App\Support\GoogleDrive;
 use App\Support\Lookup;
+use App\Support\SurveyVersions;
 use App\Support\Webhook;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -44,7 +45,15 @@ class FormSubmissionController extends Controller
     {
         abort_unless($survey->isPublished(), 404);
 
+        // Sent again after a lost connection: the first one was stored, so just say thanks.
+        $submissionId = $this->submissionId($request);
+        if ($submissionId && $survey->responses()->where('submission_id', $submissionId)->exists()) {
+            return redirect()->route('form.thanks', $survey);
+        }
+
         $response = $survey->responses()->create([
+            'survey_version' => SurveyVersions::current($survey),
+            'submission_id' => $submissionId,
             'answers' => $request->answers(),
             'flags' => $request->flags(),
             'source' => 'form',
@@ -67,6 +76,14 @@ class FormSubmissionController extends Controller
     public function preview(Survey $survey): View
     {
         return view('form.fill', ['survey' => $survey, 'isPreview' => true, 'assignment' => null]);
+    }
+
+    /**
+     * The preview inside a phone frame, to try the form as a petugas would on their phone.
+     */
+    public function phonePreview(Survey $survey): View
+    {
+        return view('form.phone-preview', ['survey' => $survey]);
     }
 
     /**
@@ -97,6 +114,16 @@ class FormSubmissionController extends Controller
         $startedAt = Carbon::createFromTimestampMs((int) $milliseconds);
 
         return $startedAt->between(now()->subWeek(), now()->addMinute()) ? $startedAt->min(now()) : null;
+    }
+
+    /**
+     * The id the page gave this submission (kept with its draft), so a resend is recognised.
+     */
+    private function submissionId(Request $request): ?string
+    {
+        $id = (string) $request->input('_submission_id', '');
+
+        return preg_match('/^[A-Za-z0-9-]{8,64}$/', $id) ? $id : null;
     }
 
     private function assignmentFor(Request $request, Survey $survey): ?Assignment

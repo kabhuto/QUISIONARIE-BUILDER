@@ -87,6 +87,10 @@
             other_label: '',
             mask: '',
             lookup: null,
+            variable: '',
+            unit: '',
+            concept: '',
+            nonresponse: false,
             ...(type === 'calc' ? { formula: '', format: 'number', decimals: 0 } : {}),
             ...(type === 'file' ? { file: { accept: 'image', max_mb: 5 } } : {}),
             ...(type === 'location' ? { location: { max_accuracy: null } } : {}),
@@ -240,6 +244,10 @@
             other_option: Boolean(question.other_option),
             other_label: String(question.other_label ?? ''),
             mask: question.type === 'short' ? String(question.mask ?? '') : '',
+            variable: String(question.variable ?? ''),
+            unit: String(question.unit ?? ''),
+            concept: String(question.concept ?? ''),
+            nonresponse: Boolean(question.nonresponse),
             lookup: question.type === 'dropdown' && config.lookupSources[question.lookup?.source]
                 ? Object.fromEntries(['source', 'reference', 'value_column', 'label_column', 'filter_column', 'url', 'data_path', 'value_key', 'label_key', 'param', 'depends_on'].map(key => [key, String(question.lookup[key] ?? '')]))
                 : null,
@@ -1238,6 +1246,27 @@
             </div>`;
     }
 
+    // Codes and definitions that travel with the data: variable code, unit, concept, special answers.
+    function metadataTab(question) {
+        const isInfo = question.type === 'info';
+        const variables = blocks.flatMap(block => block.questions).filter(item => item.id !== question.id).map(item => item.variable.toUpperCase()).filter(Boolean);
+        const duplicate = question.variable && variables.includes(question.variable.toUpperCase());
+        const suggested = `R${String(numbers.get(question.id) ?? '').replace(/\D/g, '')}`;
+        return `
+            ${isInfo ? '' : `<label class="setting-field"><span>Kode variabel <small>(nama kolom data, mis. ${escapeHtml(suggested)})</small></span>
+                <input class="setting-select mono-input" type="text" maxlength="32" value="${escapeHtml(question.variable)}" placeholder="${escapeHtml(suggested)}" data-option="variable" pattern="[A-Za-z][A-Za-z0-9_]*"></label>
+            <p class="setting-note is-warning" data-variable-problem ${duplicate ? '' : 'hidden'}>Kode variabel ini sudah dipakai pertanyaan lain.</p>
+            <p class="setting-note">Kode tetap walaupun teks pertanyaan diubah, jadi data lama dan baru tetap satu kolom. Kosongkan untuk memakai nomor pertanyaan.</p>`}
+            ${config.unitTypes.includes(question.type) ? `<label class="setting-field"><span>Satuan</span><input class="setting-select" type="text" maxlength="40" value="${escapeHtml(question.unit)}" placeholder="mis. kg, rupiah, jam/minggu" data-option="unit" list="unit-presets"></label>
+                <datalist id="unit-presets"><option value="rupiah"><option value="kg"><option value="ton"><option value="hektar"><option value="m²"><option value="orang"><option value="unit"><option value="jam/minggu"><option value="hari"><option value="liter"></datalist>` : ''}
+            <label class="setting-field"><span>Konsep dan definisi <small>(dibuka petugas lewat “Lihat konsep dan definisi”)</small></span>
+                <textarea class="setting-select setting-textarea" rows="5" maxlength="2000" placeholder="mis. Omzet adalah nilai seluruh penjualan barang/jasa selama periode referensi, sebelum dikurangi biaya." data-option="concept">${escapeHtml(question.concept)}</textarea></label>
+            ${config.nonresponseTypes.includes(question.type) ? `
+                <div class="logic-step"><span>Jawaban khusus</span></div>
+                <label class="required-toggle"><input type="checkbox" data-option="nonresponse" ${question.nonresponse ? 'checked' : ''}><span class="toggle-track"></span><span>Izinkan “${escapeHtml(Object.values(config.nonresponse).join('” dan “'))}”</span></label>
+                <p class="setting-note">Petugas dapat memilih salah satunya bila responden tidak tahu atau menolak. Pertanyaan wajib dianggap terjawab dan datanya ditandai sesuai pilihan, bukan dibiarkan kosong.</p>` : ''}`;
+    }
+
     function logicTab(question) {
         const available = earlierQuestions('question', question.id);
         const others = blocks.flatMap(block => block.questions).filter(item => item.id !== question.id && item.type !== 'info');
@@ -1327,7 +1356,8 @@
             const isInfo = question.type === 'info';
             const logicCount = question.logic ? 1 : 0;
             const validationCount = question.validation.rules.length + question.validation.checks.length;
-            const body = fieldTab === 'logic' ? logicTab(question) : (fieldTab === 'validation' ? validationTab(question) : optionsTab(question));
+            const body = fieldTab === 'logic' ? logicTab(question) : (fieldTab === 'validation' ? validationTab(question) : (fieldTab === 'metadata' ? metadataTab(question) : optionsTab(question)));
+            const metadataCount = (question.variable ? 1 : 0) + (question.unit ? 1 : 0) + (question.concept ? 1 : 0) + (question.nonresponse ? 1 : 0);
             selectionPanel.innerHTML = `
                 <div class="field-head">
                     <span class="field-type">${escapeHtml(config.questionTypes[question.type])}</span>
@@ -1338,6 +1368,7 @@
                     <button type="button" role="tab" data-field-tab="options" aria-selected="${fieldTab === 'options'}">Opsi</button>
                     <button type="button" role="tab" data-field-tab="logic" aria-selected="${fieldTab === 'logic'}">Logika${logicCount ? ' <b>•</b>' : ''}</button>
                     <button type="button" role="tab" data-field-tab="validation" aria-selected="${fieldTab === 'validation'}" ${isInfo ? 'disabled' : ''}>Validasi${validationCount ? ` <b>${validationCount}</b>` : ''}</button>
+                    <button type="button" role="tab" data-field-tab="metadata" aria-selected="${fieldTab === 'metadata'}">Metadata${metadataCount ? ` <b>${metadataCount}</b>` : ''}</button>
                 </div>
                 <div class="field-tab-body">${body}</div>
                 <button class="danger-link" type="button" data-setting-action="remove-question">Hapus ${isInfo ? 'keterangan' : 'pertanyaan'}</button>`;
@@ -1670,6 +1701,12 @@
             else if (option === 'file_max_mb') question.file.max_mb = clamp(target.value, 1, config.maxFileMb, 5);
             else if (option === 'location_max_accuracy') question.location = { max_accuracy: target.value ? clamp(target.value, 1, config.maxLocationAccuracy, null) : null };
             else if (['label', 'description', 'formula'].includes(option)) question[option] = tagsToIds(target.value);
+            else if (option === 'variable') {
+                question.variable = target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+                const others = blocks.flatMap(block => block.questions).filter(item => item.id !== question.id).map(item => item.variable);
+                const note = selectionPanel.querySelector('[data-variable-problem]');
+                if (note) note.hidden = !question.variable || !others.includes(question.variable);
+            }
             else question[option] = target.value;
             if (['formula', 'mask', 'other_label', 'file_max_mb', 'location_max_accuracy'].includes(option)) {
                 refreshPreview(question);
@@ -1787,6 +1824,10 @@
         if (option === 'hide_label') {
             question.hide_label = target.checked;
             return afterPanelChange(question);
+        }
+        if (option === 'nonresponse') {
+            question.nonresponse = target.checked;
+            return afterPanelChange(question, { rerender: true });
         }
         if (option === 'options_from' || option === 'other_option') {
             if (option === 'options_from') {

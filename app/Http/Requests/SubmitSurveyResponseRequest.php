@@ -180,6 +180,31 @@ class SubmitSurveyResponseRequest extends FormRequest
     }
 
     /**
+     * Where a field's special answer (Tidak tahu / Menolak) is posted, like the "Lainnya" text.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    private function statusKey(array $field): string
+    {
+        return $field['question']['id'].Survey::STATUS_SUFFIX.($field['row'] === null ? '' : '.'.$field['row']);
+    }
+
+    /**
+     * The special answer chosen for a field that allows one, or null.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    private function nonresponse(array $field): ?string
+    {
+        if (empty($field['question']['nonresponse'])) {
+            return null;
+        }
+        $status = $this->input('answers.'.$this->statusKey($field));
+
+        return is_string($status) && isset(Survey::NONRESPONSE[$status]) ? $status : null;
+    }
+
+    /**
      * The options a field's choice question offers for the answers given so far.
      *
      * @param  array<string, mixed>  $field
@@ -218,6 +243,16 @@ class SubmitSurveyResponseRequest extends FormRequest
             $question = $field['question'];
             $key = 'answers.'.$field['key'];
             $presence = $field['state']['required'] ? 'required' : 'nullable';
+
+            // "Tidak tahu" / "Menolak" stands in for the answer, which then stays empty.
+            if (! empty($question['nonresponse'])) {
+                $rules['answers.'.$this->statusKey($field)] = ['nullable', 'string', Rule::in(array_keys(Survey::NONRESPONSE))];
+                if ($this->nonresponse($field) !== null) {
+                    $rules[$key] = ['nullable'];
+
+                    continue;
+                }
+            }
 
             if ($question['type'] === 'region') {
                 $rules[$key] = ['nullable', 'array'];
@@ -441,6 +476,9 @@ class SubmitSurveyResponseRequest extends FormRequest
                     $question = $field['question'];
                     $key = 'answers.'.$field['key'];
                     $required = $field['state']['required'];
+                    if ($this->nonresponse($field) !== null) {
+                        continue;
+                    }
 
                     if ($question['type'] === 'table' && $required && $this->tableRows($question) === []) {
                         $validator->errors()->add($key, $question['text'].' wajib diisi minimal satu baris.');
@@ -642,7 +680,7 @@ class SubmitSurveyResponseRequest extends FormRequest
                         $answers[$question['id']] = $value;
                     }
                     // Keep the "Lainnya" text, a looked-up label and a GPS accuracy right after their answer.
-                    foreach ([Survey::LABEL_SUFFIX, Survey::OTHER_SUFFIX, Survey::ACCURACY_SUFFIX] as $suffix) {
+                    foreach ([Survey::LABEL_SUFFIX, Survey::OTHER_SUFFIX, Survey::ACCURACY_SUFFIX, Survey::STATUS_SUFFIX] as $suffix) {
                         if (array_key_exists($question['id'].$suffix, $answers)) {
                             $extra = $answers[$question['id'].$suffix];
                             unset($answers[$question['id'].$suffix]);
@@ -685,6 +723,16 @@ class SubmitSurveyResponseRequest extends FormRequest
             return ($question['prefill'] ?? '') !== '' && ! in_array($question['type'], ['region', 'table', 'multiple'], true) && ! ($row !== null && $hidden)
                 ? $question['prefill']
                 : '';
+        }
+
+        if (($status = $this->nonresponse($field)) !== null) {
+            if ($row === null) {
+                $answers[$id.Survey::STATUS_SUFFIX] = $status;
+            } else {
+                $answers[$id.Survey::STATUS_SUFFIX][$row] = $status;
+            }
+
+            return '';
         }
 
         $submitted = $this->submittedAnswers();

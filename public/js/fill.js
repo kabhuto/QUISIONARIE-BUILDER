@@ -11,6 +11,9 @@
     const progressText = document.querySelector('[data-progress-text]');
     const startedAt = form.querySelector('[data-started-at]');
     if (startedAt && !startedAt.value) startedAt.value = String(Date.now());
+    const submissionId = form.querySelector('[data-submission-id]');
+    const newId = () => (window.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`);
+    if (submissionId && !submissionId.value) submissionId.value = newId();
 
     const OTHER_VALUE = 'Lainnya';
     const OTHER_SUFFIX = '__lainnya';
@@ -34,9 +37,9 @@
     // The answer as the logic sees it; structured answers only count as "answered or not".
     function answerOf(question) {
         const type = question.dataset.type;
-        if (type === 'multiple') return [...question.querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value);
+        if (type === 'multiple') return [...question.querySelectorAll('input[type="checkbox"]:checked:not([data-nonresponse-option])')].map(input => input.value);
         if (type === 'single' || type === 'rating' || type === 'scale') return question.querySelector('input[type="radio"]:checked')?.value ?? '';
-        if (type === 'checkbox') return question.querySelector('input[type="checkbox"]:checked')?.value ?? '';
+        if (type === 'checkbox') return question.querySelector('input[type="checkbox"]:checked:not([data-nonresponse-option])')?.value ?? '';
         if (type === 'region' || type === 'table' || type === 'matrix') {
             const filled = [...question.querySelectorAll('input:not([type="radio"]):not([type="hidden"]), select, input[type="radio"]:checked')].some(field => fieldValue(field) !== '');
             return filled ? ['filled'] : [];
@@ -49,6 +52,11 @@
         }
         const value = fieldValue(question.querySelector('[name^="answers["]:not([data-other-text]):not([data-lookup-search])'));
         return type === 'currency' ? value.replace(/\D/g, '') : value;
+    }
+
+    // "Tidak tahu" or "Menolak menjawab", when the question allows them and one is ticked.
+    function nonresponseOf(question) {
+        return question.querySelector('[data-nonresponse-option]:checked')?.value ?? '';
     }
 
     function isAnswered(answer) {
@@ -936,6 +944,7 @@
     }
 
     function problemWith(question) {
+        if (nonresponseOf(question)) return '';
         const type = question.dataset.type;
         const required = question.hasAttribute('data-required');
 
@@ -1001,7 +1010,7 @@
         // Chosen files cannot be kept in a draft; everything else can.
         const entries = [...new FormData(form).entries()].filter(([name, value]) => name.startsWith('answers[') && typeof value === 'string');
         try {
-            store.setItem(config.draftKey, JSON.stringify({ savedAt: Date.now(), startedAt: startedAt?.value, entries }));
+            store.setItem(config.draftKey, JSON.stringify({ savedAt: Date.now(), startedAt: startedAt?.value, submissionId: submissionId?.value, entries }));
             const time = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
             if (draftStatus) draftStatus.textContent = `Tersimpan sementara pukul ${time}.`;
         } catch {
@@ -1027,6 +1036,8 @@
         if (!Array.isArray(draft?.entries) || !draft.entries.length) return;
         // Filling began when the draft was first started, not when it was reopened.
         if (startedAt && /^\d+$/.test(String(draft.startedAt ?? ''))) startedAt.value = String(Math.min(Number(draft.startedAt), Number(startedAt.value)));
+        // The same submission as before the page was closed, so a resend is not stored twice.
+        if (submissionId && /^[A-Za-z0-9-]{8,64}$/.test(String(draft.submissionId ?? ''))) submissionId.value = draft.submissionId;
 
         // Dynamic table rows were saved with whatever indexes they had; recreate them as 0..n-1.
         const rowMaps = new Map();
@@ -1206,6 +1217,24 @@
         if (!preview.hidden) preview.src = URL.createObjectURL(file);
     });
 
+    // A special answer replaces the answer: ticking one clears the field, answering clears it.
+    form.addEventListener('change', event => {
+        const question = event.target.closest('.fill-question');
+        if (!question?.querySelector('[data-nonresponse]')) return;
+        if (event.target.matches('[data-nonresponse-option]')) {
+            if (!event.target.checked) return;
+            question.querySelectorAll('[data-nonresponse-option]').forEach(option => { option.checked = option === event.target; });
+            question.querySelectorAll('[name^="answers["]:not([data-nonresponse-option])').forEach(field => {
+                if (field.type === 'radio' || field.type === 'checkbox') field.checked = false;
+                else if (field.type !== 'hidden') field.value = '';
+            });
+            question.querySelectorAll('.code-input').forEach(syncCodeDigits);
+            setError(question, '');
+        } else if (event.target.name?.startsWith('answers[') && (fieldValue(event.target) !== '' || event.target.checked)) {
+            question.querySelectorAll('[data-nonresponse-option]').forEach(option => { option.checked = false; });
+        }
+    });
+
     form.addEventListener('input', event => {
         if (event.target.matches('[data-currency]')) formatRupiah(event.target);
         if (event.target.closest('.fill-question[data-mask]') && event.target.matches('input.fill-input')) applyMask(event.target, event.target.closest('[data-mask]').dataset.mask);
@@ -1253,7 +1282,7 @@
         markChecks = false;
         const problem = problemWith(question);
         markChecks = true;
-        const answered = isAnswered(answerOf(question));
+        const answered = isAnswered(answerOf(question)) || nonresponseOf(question) !== '';
         const warnings = question.querySelectorAll('[data-check-id].is-warning:not([hidden])').length;
         if (!answered) return { status: 'empty', message: problem, blocking: problem !== '' };
         if (problem && problem !== CONFIRM_MESSAGE) return { status: 'error', message: problem, blocking: true };
@@ -1467,7 +1496,32 @@
         }
         clearTimeout(draftTimer);
         saveDraft();
+
+        // No signal: keep everything on the phone and send by itself once the connection is back.
+        if (!navigator.onLine) {
+            event.preventDefault();
+            showOffline(true);
+            window.addEventListener('online', () => {
+                showOffline(false);
+                confirmedSubmit = true;
+                form.requestSubmit();
+            }, { once: true });
+        }
     });
+
+    function showOffline(waiting) {
+        let banner = document.querySelector('[data-offline-banner]');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.className = 'fill-offline';
+            banner.setAttribute('role', 'status');
+            banner.dataset.offlineBanner = '';
+            document.body.append(banner);
+        }
+        banner.hidden = !waiting;
+        banner.innerHTML = '<b>Tidak ada sinyal.</b> Jawaban sudah tersimpan di perangkat ini dan akan terkirim otomatis begitu sinyal kembali. Jangan tutup halaman ini.';
+        note.textContent = waiting ? 'Menunggu sinyal untuk mengirim…' : 'Sinyal kembali, mengirim jawaban…';
+    }
 
     // ── The block list: highlights the block on screen; a drawer on phones and tablets ──
 
@@ -1529,9 +1583,34 @@
     }
 
     // The previous or next section the respondent can see (the cover, then the blocks the logic shows).
+    // Moving on from a block: point out what in it still needs attention first (once per block).
+    let warnedBlock = null;
+    function blockProblems(section) {
+        if (!section?.classList.contains('fill-block')) return [];
+        applyLogic();
+        return [...section.querySelectorAll('.fill-question:not([data-type="info"]):not([data-type="calc"])')]
+            .filter(question => !question.hidden && !question.closest('[hidden]') && !question.classList.contains('is-disabled'))
+            .map(question => {
+                const problem = problemWith(question);
+                setError(question, problem);
+                return problem ? question : null;
+            })
+            .filter(Boolean);
+    }
+
     document.querySelectorAll('[data-block-step]').forEach(button => button.addEventListener('click', () => {
         const sections = [document.getElementById('pengantar'), ...blocks].filter(section => section && !section.hidden);
         const index = sections.findIndex(section => section.id === currentTarget);
+        if (Number(button.dataset.blockStep) > 0 && warnedBlock !== currentTarget) {
+            const problems = blockProblems(sections[index]);
+            if (problems.length) {
+                warnedBlock = currentTarget;
+                goTo(problems[0]);
+                note.textContent = `${problems.length} isian di blok ini perlu diperiksa. Tekan › lagi untuk tetap lanjut.`;
+                return;
+            }
+        }
+        warnedBlock = null;
         const next = sections[Math.min(sections.length - 1, Math.max(0, index + Number(button.dataset.blockStep)))];
         next?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }));

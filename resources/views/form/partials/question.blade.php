@@ -361,8 +361,27 @@
                     @if ($maxLength)
                         <p class="fill-counter" data-counter></p>
                     @endif
+                    @if (($question['unit'] ?? '') !== '')
+                        <p class="fill-unit">Satuan: <b>{{ $question['unit'] }}</b></p>
+                    @endif
+                    @if (! empty($question['nonresponse']))
+                        @php($statusName = 'answers['.$question['id'].\App\Models\Survey::STATUS_SUFFIX.']'.$rowSuffix)
+                        @php($statusOld = old('answers.'.$question['id'].\App\Models\Survey::STATUS_SUFFIX.$rowKey))
+                        <div class="fill-nonresponse" data-nonresponse role="group" aria-label="Jawaban khusus">
+                            @foreach (\App\Models\Survey::NONRESPONSE as $value => $text)
+                                <label><input type="checkbox" name="{{ $statusName }}" value="{{ $value }}" data-nonresponse-option @checked($statusOld === $value)><span>{{ $text }}</span></label>
+                            @endforeach
+                        </div>
+                    @endif
                 </div>
             </div>
+        @endif
+
+        @if (($question['concept'] ?? '') !== '')
+            <details class="fill-concept">
+                <summary>Lihat konsep dan definisi</summary>
+                <div>{!! nl2br(e($question['concept'])) !!}</div>
+            </details>
         @endif
 
         <p class="fill-error" data-error>{{ $error }}</p>

@@ -15,7 +15,7 @@ class SurveyResponseController extends Controller
     /**
      * When and from what each response was sent, at the start of every export row.
      */
-    private const METADATA_COLUMNS = ['Waktu kirim', 'Waktu mulai mengisi', 'Lama mengisi (detik)', 'Alamat IP', 'Perangkat', 'User agent'];
+    private const METADATA_COLUMNS = ['Waktu kirim', 'Waktu mulai mengisi', 'Lama mengisi (detik)', 'Alamat IP', 'Perangkat', 'User agent', 'Versi instrumen'];
 
     public function index(Survey $survey): View
     {
@@ -55,7 +55,7 @@ class SurveyResponseController extends Controller
         Xlsx::write(
             $path,
             $survey->title,
-            ['No', ...self::METADATA_COLUMNS, ...array_map(fn (array $question): string => $question['number'].'. '.$question['text'], $questions), 'Detail respons'],
+            ['No', ...self::METADATA_COLUMNS, ...array_map(fn (array $question): string => self::heading($question, '. '), $questions), 'Detail respons'],
             $survey->responses()->oldest()->lazy()->map(function (SurveyResponse $response) use ($survey, $questions, &$position): array {
                 return [
                     ++$position,
@@ -92,7 +92,7 @@ class SurveyResponseController extends Controller
             fputcsv($output, [
                 'No',
                 ...self::METADATA_COLUMNS,
-                ...array_map(fn (array $question): string => $question['number'].' '.$question['text'], $questions),
+                ...array_map(fn (array $question): string => self::heading($question, ' '), $questions),
             ]);
 
             $position = 0;
@@ -109,6 +109,19 @@ class SurveyResponseController extends Controller
     }
 
     /**
+     * A question's column heading: its variable code when it has one, its number, text and unit.
+     *
+     * @param  array<string, mixed>  $question
+     */
+    private static function heading(array $question, string $separator): string
+    {
+        $variable = ($question['variable'] ?? '') !== '' ? '['.$question['variable'].'] ' : '';
+        $unit = ($question['unit'] ?? '') !== '' ? ' ('.$question['unit'].')' : '';
+
+        return $variable.$question['number'].$separator.$question['text'].$unit;
+    }
+
+    /**
      * @return list<string|int>
      */
     private static function metadata(SurveyResponse $response): array
@@ -122,6 +135,7 @@ class SurveyResponseController extends Controller
             $response->ip_address ?? '',
             $response->deviceLabel(),
             $response->user_agent ?? '',
+            $response->survey_version ?? '',
         ];
     }
 

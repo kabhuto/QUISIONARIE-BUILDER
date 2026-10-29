@@ -369,3 +369,22 @@ body.nav-open{overflow:hidden}
 }
 /* Hidden labels inside a scrolling table stay inside it instead of widening the page. */
 .cawi-table-wrap{position:relative}
+
+/* Unit, concept and definition, special answers (Tidak tahu / Menolak) */
+.fill-unit{margin:4px 0 0;font-size:12px;color:color-mix(in srgb,var(--accent) 70%,var(--k-000000))}
+.fill-nonresponse{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.fill-nonresponse label{position:relative;cursor:pointer}
+.fill-nonresponse input{position:absolute;opacity:0;pointer-events:none}
+.fill-nonresponse span{display:inline-block;padding:4px 12px;border:1px dashed color-mix(in srgb,var(--accent) 45%,transparent);border-radius:999px;font-size:12.5px;font-weight:600;color:color-mix(in srgb,var(--accent) 80%,var(--k-000000))}
+.fill-nonresponse input:checked+span{border-style:solid;border-color:var(--accent);background:var(--accent);color:var(--k-ffffff)}
+.fill-nonresponse input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.fill-concept{margin-top:8px;font-size:13px}
+.fill-concept summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;color:var(--accent);list-style:none}
+.fill-concept summary::-webkit-details-marker{display:none}
+.fill-concept summary::before{content:"ⓘ";font-size:14px}
+.fill-concept[open] summary{margin-bottom:6px}
+.fill-concept div{padding:10px 12px;border-left:3px solid var(--accent);border-radius:6px;background:color-mix(in srgb,var(--accent) 7%,transparent);line-height:1.5}
+
+/* Waiting for a signal to send */
+.fill-offline{position:fixed;left:50%;bottom:16px;z-index:60;width:min(560px,calc(100% - 32px));transform:translateX(-50%);padding:12px 16px;border-radius:12px;background:var(--k-1f2a30);color:var(--k-ffffff);font-size:13.5px;line-height:1.45;box-shadow:0 10px 30px rgb(0 0 0 / .25)}
+.fill-offline b{color:var(--k-f0d49a)}

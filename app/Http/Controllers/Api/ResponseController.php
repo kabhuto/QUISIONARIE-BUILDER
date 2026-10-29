@@ -8,6 +8,7 @@ use App\Models\SurveyResponse;
 use App\Support\GoogleDrive;
 use App\Support\ResponseValidator;
 use App\Support\SurveyJson;
+use App\Support\SurveyVersions;
 use App\Support\Webhook;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -140,6 +141,7 @@ class ResponseController extends Controller
     private function save(Survey $survey, array $result, mixed $submittedAt): SurveyResponse
     {
         $response = $survey->responses()->create([
+            'survey_version' => SurveyVersions::current($survey),
             'answers' => $result['answers'],
             'flags' => $result['flags'],
             'source' => 'api',

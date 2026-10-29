@@ -131,6 +131,10 @@ class StoreSurveyRequest extends FormRequest
             "{$question}.width" => ['sometimes', Rule::in(array_keys(Survey::FIELD_WIDTHS))],
             "{$question}.help_position" => ['sometimes', Rule::in(['below', 'above'])],
             "{$question}.max_length" => ['nullable', 'integer', 'between:1,5000'],
+            "{$question}.variable" => ['nullable', 'string', 'regex:'.Survey::VARIABLE_PATTERN],
+            "{$question}.unit" => ['nullable', 'string', 'max:40'],
+            "{$question}.concept" => ['nullable', 'string', 'max:2000'],
+            "{$question}.nonresponse" => ['sometimes', 'boolean'],
             "{$question}.logic" => ['nullable', 'array'],
             "{$question}.validation" => ['nullable', 'array'],
             "{$question}.validation.rules" => ['sometimes', 'array', 'max:'.FieldValidation::MAX_RULES],
@@ -221,10 +225,33 @@ class StoreSurveyRequest extends FormRequest
                     return;
                 }
 
+                $this->validateVariables($validator, $blocks);
                 $this->validateStructuredQuestions($validator, $blocks);
                 $this->validateConditions($validator, $blocks);
             },
         ];
+    }
+
+    /**
+     * Variable codes name the columns of the data, so no two questions may share one.
+     *
+     * @param  array<int, array<string, mixed>>  $blocks
+     */
+    private function validateVariables(Validator $validator, array $blocks): void
+    {
+        $seen = [];
+        foreach ($blocks as $blockIndex => $block) {
+            foreach ($block['questions'] as $questionIndex => $question) {
+                $variable = mb_strtoupper(trim((string) ($question['variable'] ?? '')));
+                if ($variable === '') {
+                    continue;
+                }
+                if (isset($seen[$variable])) {
+                    $validator->errors()->add("blocks.{$blockIndex}.questions.{$questionIndex}.variable", "Kode variabel {$variable} sudah dipakai pertanyaan lain. Setiap kode variabel harus unik.");
+                }
+                $seen[$variable] = true;
+            }
+        }
     }
 
     /**
@@ -613,6 +640,7 @@ class StoreSurveyRequest extends FormRequest
             'blocks.*.questions.*.code_length.between' => 'Jumlah kotak kode maksimal '.Survey::MAX_CODE_LENGTH.'.',
             'blocks.*.questions.*.table.columns.*.label.required' => 'Judul kolom tabel wajib diisi.',
             'header.items.*.path.regex' => 'Logo kop tidak valid. Unggah ulang logonya.',
+            'blocks.*.questions.*.variable.regex' => 'Kode variabel diawali huruf, lalu huruf, angka, atau garis bawah (maks. 32 karakter), mis. R101.',
         ];
     }
 
@@ -705,6 +733,10 @@ class StoreSurveyRequest extends FormRequest
             'width' => $question['width'] ?? 'full',
             'help_position' => $question['help_position'] ?? 'below',
             'max_length' => in_array($type, ['short', 'long'], true) && ($question['max_length'] ?? null) ? (int) $question['max_length'] : null,
+            'variable' => $type === 'info' ? '' : mb_strtoupper(trim((string) ($question['variable'] ?? ''))),
+            'unit' => in_array($type, Survey::UNIT_TYPES, true) ? trim((string) ($question['unit'] ?? '')) : '',
+            'concept' => trim((string) ($question['concept'] ?? '')),
+            'nonresponse' => in_array($type, Survey::NONRESPONSE_TYPES, true) && (bool) ($question['nonresponse'] ?? false),
             'options_from' => in_array($type, Survey::CHOICE_TYPES, true) ? trim((string) ($question['options_from'] ?? '')) : '',
             'other_option' => in_array($type, Survey::CHOICE_TYPES, true) && ($question['options_from'] ?? '') === '' && (bool) ($question['other_option'] ?? false),
             'other_label' => trim((string) ($question['other_label'] ?? '')),

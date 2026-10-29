@@ -153,6 +153,8 @@
                     @csrf
                     {{-- When the respondent opened the form; set by JavaScript, kept with the draft. --}}
                     <input type="hidden" name="_started_at" value="{{ old('_started_at') }}" data-started-at>
+                    {{-- This submission's own id, kept with the draft, so a resend after a lost connection is stored once. --}}
+                    <input type="hidden" name="_submission_id" value="{{ old('_submission_id') }}" data-submission-id>
                     @if ($assignment)
                         <input type="hidden" name="a" value="{{ $assignment->token }}">
                         <div class="fill-assignment">Penugasan{{ $assignment->label ? ': '.$assignment->label : '' }} — sebagian jawaban sudah terisi dari data awal.</div>

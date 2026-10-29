@@ -78,6 +78,7 @@
                         <dd class="is-empty">Tidak tercatat</dd>
                     @endif
                 </div>
+                <div class="detail-row"><dt>Versi instrumen</dt><dd @class(['is-empty' => ! $response->survey_version])>@if ($response->survey_version)<a href="{{ route('surveys.versions.index', $survey) }}#versi-{{ $response->survey_version }}">Versi {{ $response->survey_version }}</a>@else Sebelum pencatatan versi @endif</dd></div>
                 <div class="detail-row"><dt>Dikirim melalui</dt><dd>{{ ($response->source ?? 'form') === 'api' ? 'API' : 'Formulir web' }}</dd></div>
             </dl>
         </section>

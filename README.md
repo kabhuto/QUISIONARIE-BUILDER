@@ -76,6 +76,11 @@ php artisan test
 - **Penugasan**: tautan pribadi berpredata (bisa dikunci), sekali kirim; dibuat dari CSV atau lewat API
 - **API v1** bertoken (menu *Akses API*, berisi dokumentasi): kuesioner, respons (satu/batch), validasi tanpa simpan, penugasan, data referensi; **webhook** respons baru bertanda tangan HMAC
 - **FormGear/FASIH**: impor template (+ validation + preset) dan ekspor ZIP `template.json`, `validation.json`, `preset.json`
+- **Metadata pertanyaan** (tab *Metadata*): kode variabel unik (nama kolom data yang tidak berubah walau teks diganti), satuan, serta konsep dan definisi yang dibuka petugas lewat "Lihat konsep dan definisi"; jawaban khusus **Tidak tahu / Menolak menjawab** yang tercatat terpisah (`id__status`), bukan dibiarkan kosong
+- **Pemeriksaan publikasi**: galat (kode variabel ganda, pilihan kembar atau kurang dari dua, rumus kosong, pemeriksaan tanpa pesan) menahan publikasi; peringatan (belum ada kode variabel, isian angka tanpa batas wajar, isian tersembunyi yang tak pernah muncul) cukup ditinjau
+- **Versi instrumen**: versi baru tercatat saat dipublikasikan atau diubah ketika sedang terbit, lengkap dengan daftar perubahan; setiap respons menyimpan nomor versinya (detail, CSV/Spreadsheet, JSON, API)
+- **Mode HP**: pratinjau dalam bingkai ponsel/tablet untuk mencoba alur seperti petugas
+- Pengisian lapangan lebih aman: pemeriksaan isian saat pindah blok, antrean kirim ketika tidak ada sinyal (terkirim otomatis begitu sinyal kembali), dan ID kiriman unik sehingga kiriman ulang tidak tersimpan dua kali
 
 ## API singkat
 
