@@ -127,6 +127,7 @@ class SurveyController extends Controller
             'activity' => $survey->activity,
             'published' => $survey->isPublished(),
             'published_at' => $survey->published_at?->toIso8601String(),
+            'version' => $survey->versions()->max('number'),
             'responses_count' => $survey->responses_count ?? $survey->responses()->count(),
             'updated_at' => $survey->updated_at?->toIso8601String(),
             'links' => [
